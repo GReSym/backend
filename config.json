@@ -1,9 +1,0 @@
-{
-  "server": "localhost",
-  "port": 3306,
-  "database": "GamesRecommend",
-  "user": "xxx",
-  "password": "xxx",
-  "jwt_expire_minutes": 60,
-  "jwt_key": "xxx"
-}
