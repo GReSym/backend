@@ -170,8 +170,12 @@ Parser предназначен прежде всего для первонач�
 ├── GReSym.Parser/           # Парсер и ETL
 ├── GReSym.Parser.UI/        # UI для управления парсером
 ├── GReSym.sln               # Solution
-├── config.json              # Локальная конфигурация
+├── config.example.json      # Пример локальной конфигурации (в git)
+├── config.json              # Локальная конфигурация с секретами (не в git, создаётся из примера)
 └── manage.sh                # Скрипт управления проектом
+
+Каждый из проектов GReSym.API, GReSym.Infrastructure и GReSym.Parser.UI содержит
+appsettings.example.json (в git) и генерируемый из него appsettings.json (не в git).
 ```
 
 ## Требования
@@ -192,7 +196,8 @@ jq --version
 openssl version
 ```
 
-Также для работы миграций Entity Framework Core должен быть доступен `dotnet ef`.
+Также для работы миграций Entity Framework Core должен быть доступен `dotnet ef`
+(`manage.sh` находит его и в `~/.dotnet/tools`, даже если этот каталог не добавлен в `PATH`).
 
 При необходимости:
 
@@ -202,11 +207,19 @@ dotnet tool install --global dotnet-ef
 
 ## Настройка
 
-Перед первым запуском необходимо создать и настроить `config.json` в корне репозитория.
+Конфигурация построена на файлах-примерах, которые хранятся в git и являются источником истины:
 
-Если файл отсутствует, `manage.sh` автоматически создаст шаблон при выполнении `setup`.
+| Пример (в git) | Генерируемый файл (не в git) |
+|---|---|
+| `config.example.json` | `config.json` — учётные данные БД и JWT |
+| `GReSym.API/appsettings.example.json` | `GReSym.API/appsettings.json` |
+| `GReSym.Infrastructure/appsettings.example.json` | `GReSym.Infrastructure/appsettings.json` |
+| `GReSym.Parser.UI/appsettings.example.json` | `GReSym.Parser.UI/appsettings.json` |
 
-Пример конфигурации:
+Перед первым запуском необходимо создать и заполнить `config.json`. Если файл отсутствует,
+`./manage.sh setup` скопирует его из `config.example.json` и завершится, чтобы его можно было заполнить.
+
+Содержимое `config.example.json`:
 
 ```json
 {
@@ -232,13 +245,24 @@ dotnet tool install --global dotnet-ef
 | `jwt_expire_minutes` | Время жизни JWT-токена в минутах |
 | `jwt_key` | Секретный ключ для подписи JWT |
 
-`jwt_key` должен иметь длину не менее **32 байт**.
+Значения `""`, `null`, `xxx` и `###` считаются незаполненными: `setup` завершится с ошибкой и перечислит,
+какие параметры нужно указать (кроме `jwt_key` и `jwt_expire_minutes`).
 
-Если ключ отсутствует или слишком короткий, `manage.sh` автоматически сгенерирует новый ключ с помощью `openssl` и сохранит его в `config.json`.
+`jwt_key` должен иметь длину не менее **32 байт**. Если ключ отсутствует, является заглушкой или слишком короткий,
+`manage.sh` сгенерирует новый ключ с помощью `openssl` и сохранит его в `config.json` (ключ в консоль не выводится).
+Если `jwt_expire_minutes` не задан, используется 60.
+
+Если пользователь или пароль БД содержат символы `;`, `"`, `'` или `=`, значение автоматически заключается в кавычки
+в строке подключения.
 
 ### Важно
 
-`config.json` содержит учётные данные базы данных и секретный JWT-ключ. Файл не должен попадать в публичный репозиторий.
+`config.json` и `appsettings.json` содержат учётные данные базы данных и секретный JWT-ключ. Они перечислены в `.gitignore`
+и не должны попадать в репозиторий. В git хранятся только `*.example.json` с заглушками.
+
+Несекретные настройки (логирование, `Jwt.Issuer`, `Jwt.Audience` и т.п.) меняются в соответствующем
+`appsettings.example.json`, после чего нужно повторно выполнить `./manage.sh setup`. Ручные правки в `appsettings.json`
+перезаписываются при каждом `setup`.
 
 Не используйте реальные production credentials в примерах или тестовой конфигурации.
 
@@ -253,17 +277,12 @@ chmod +x manage.sh
 
 Команда `setup`:
 
-1. проверяет наличие конфигурации;
-2. проверяет JWT-ключ;
-3. при необходимости генерирует новый JWT-ключ;
+1. создаёт `config.json` из `config.example.json`, если его нет (и завершается для заполнения);
+2. проверяет, что все параметры БД заполнены;
+3. проверяет JWT-ключ и при необходимости генерирует новый;
 4. формирует строку подключения к БД;
-5. обновляет настройки `GReSym.API`;
-6. обновляет настройки `GReSym.Infrastructure`;
-7. обновляет настройки `GReSym.Parser.UI`.
-
-В частности, параметры из `config.json` используются для заполнения соответствующих `appsettings.json`.
-
-После этого конфигурация проектов будет синхронизирована с `config.json`.
+5. для `GReSym.API`, `GReSym.Infrastructure` и `GReSym.Parser.UI` заново создаёт `appsettings.json` из
+   `appsettings.example.json`, подставляя строку подключения (и JWT-ключ/время жизни для API). Права на файл: `600`.
 
 ## База данных
 
@@ -300,7 +319,7 @@ dotnet ef database update
 Если название не указано, будет автоматически создано имя вида:
 
 ```text
-migration_YYYY-MM-DDTHH:MM
+migration_YYYYMMDDTHHMM
 ```
 
 После создания миграции её необходимо применить:
@@ -319,7 +338,7 @@ migration_YYYY-MM-DDTHH:MM
 ./manage.sh run api
 ```
 
-Команда переходит в `GReSym.API` и выполняет:
+Команда проверяет, что `GReSym.API/appsettings.json` сгенерирован (иначе просит выполнить `setup`), переходит в `GReSym.API` и выполняет:
 
 ```bash
 dotnet run
@@ -356,7 +375,10 @@ dotnet run
 ./manage.sh setup
 ```
 
-Настраивает проекты на основе `config.json`.
+Генерирует `appsettings.json` всех проектов из примеров и `config.json`. Подробнее в разделе «Первоначальная настройка».
+
+Скрипт можно запускать из любого каталога. Файл `config.json` нужен только для `setup`.
+Команды `run` и `database` проверяют, что соответствующий `appsettings.json` настроен.
 
 ### Очистка credentials
 
@@ -364,21 +386,9 @@ dotnet run
 ./manage.sh clean credentials
 ```
 
-Заменяет чувствительные данные в `appsettings.json` на значения-заглушки.
+Восстанавливает каждый `appsettings.json` из соответствующего `appsettings.example.json`, то есть заменяет секреты заглушками `###`.
 
-Например:
-
-```text
-Server=###;Port=###;Database=###;User=###;Password=###;
-```
-
-и:
-
-```text
-Jwt.Key = "###"
-```
-
-При этом исходный `config.json` не очищается — это необходимо сделать самостоятельно.
+При этом `config.json` не очищается — это необходимо сделать самостоятельно.
 
 ### Очистка сборки
 
@@ -429,7 +439,7 @@ chmod +x manage.sh
 ./manage.sh run api
 ```
 
-Если `config.json` отсутствует, первый запуск `setup` создаст его шаблон. После заполнения параметров базы данных необходимо повторно выполнить:
+Первый запуск `setup` создаст `config.json` из `config.example.json` и завершится. После заполнения параметров базы данных необходимо повторно выполнить:
 
 ```bash
 ./manage.sh setup
