@@ -1,4 +1,5 @@
 config.json
+user_settings.json
 GReSym.API/appsettings.json
 GReSym.Infrastructure/appsettings.json
 GReSym.Parser.UI/appsettings.json
