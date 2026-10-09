@@ -41,6 +41,30 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// <summary>Queues games for (re)vectorization by the ML worker. Processing is asynchronous.</summary>
+    [HttpPost("games/vectorize")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(VectorizeGamesResponseDto), 202)]
+    [ProducesResponseType(typeof(string), 400)]
+    [ProducesResponseType(typeof(string), 503)]
+    public async Task<IActionResult> VectorizeGames([FromBody] VectorizeGamesRequestDto request)
+    {
+        try
+        {
+            var result = await _gamesService.EnqueueVectorization(request);
+
+            return Accepted(result);
+        }
+        catch (DomainException e)
+        {
+            return BadRequest(e.Message);
+        }
+        catch (MessageQueueException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "Message broker is unavailable.");
+        }
+    }
+
     [HttpPut("games/{gameId:int}/tags")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(TagsListResponseDto), 200)]

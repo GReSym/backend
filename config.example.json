@@ -5,5 +5,7 @@
   "user": "xxx",
   "password": "xxx",
   "jwt_expire_minutes": 60,
-  "jwt_key": "xxx"
+  "jwt_key": "xxx",
+  "rabbitmq_user": "xxx",
+  "rabbitmq_password": "xxx"
 }

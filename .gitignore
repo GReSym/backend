@@ -486,3 +486,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Дампы базы данных (manage.sh database dump)
+dumps/

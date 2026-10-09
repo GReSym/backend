@@ -9,6 +9,7 @@ public interface IGamesService
     Task<GamesListResponseDto> GetGames(GamesListRequestDto request);
     Task<GameInfoResponseDto> GetGame(int id);
     Task<GameInfoResponseDto> UpdateGame(int gameId, UpdateGameInfoRequestDto request);
+    Task<VectorizeGamesResponseDto> EnqueueVectorization(VectorizeGamesRequestDto request);
     Task<TagsListResponseDto> UpdateTags(int gameId, TagsListDto request);
     Task<TagsListResponseDto> GetGameTags(int id);
     Task<TagsListResponseDto> AddTags(int gameId, TagsListDto request);

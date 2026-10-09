@@ -56,12 +56,13 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Game>> GetPopularGamesAsync(int page = 1, int pageSize = Constants.Api.DefaultPageSize, List<int>? tagIds = null)
+    public async Task<IEnumerable<Game>> GetPopularGamesAsync(
+        int page = 1,
+        int pageSize = Constants.Api.DefaultPageSize,
+        List<int>? tagIds = null,
+        IReadOnlyCollection<int>? excludeIds = null)
     {
-        var query = _dbSet
-            .Include(g => g.GameTags)
-            .ThenInclude(gt => gt.Tag)
-            .AsQueryable();
+        var query = _dbSet.AsQueryable();
         
         if (tagIds != null && tagIds.Count > 0)
         {
@@ -69,10 +70,35 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
                 tagIds.All(tid => g.GameTags.Any(gt => gt.TagId == tid)));
         }
 
-        return await query
-            .OrderBy(g => g.Id)
+        if (excludeIds != null && excludeIds.Count > 0)
+        {
+            query = query.Where(g => !excludeIds.Contains(g.Id));
+        }
+
+        // Two steps: sorting only ids takes ~50 ms, while sorting full rows (with ~2 KB descriptions)
+        // takes ~3.5 s on 67k games. NULL counts sort last in descending order.
+        var pageIds = await query
+            .OrderByDescending(g => g.SteamSource!.RecommendationsCount)
+            .ThenBy(g => g.Id)
+            .Select(g => g.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .ToListAsync();
+
+        var games = (await GetByIdsAsync(pageIds)).ToDictionary(g => g.Id);
+
+        return pageIds.Where(games.ContainsKey).Select(id => games[id]).ToList();
+    }
+
+    public async Task<IEnumerable<Game>> GetByIdsAsync(IReadOnlyCollection<int> ids)
+    {
+        if (ids.Count == 0)
+            return [];
+
+        return await _dbSet
+            .Include(g => g.GameTags)
+            .ThenInclude(gt => gt.Tag)
+            .Where(g => ids.Contains(g.Id))
             .ToListAsync();
     }
 

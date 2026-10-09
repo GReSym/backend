@@ -15,7 +15,9 @@ Backend предоставляет базовую инфраструктуру �
 - управление профилем пользователя;
 - получение и управление информацией об играх;
 - работа с тегами игр;
-- пользовательские оценки игр;
+- пользовательские оценки игр (1–10 и/или «рекомендую»);
+- персональные рекомендации игр (через ML-сервис, с запасным вариантом «популярные игры»);
+- постановка игр в очередь на векторизацию (RabbitMQ);
 - отзывы пользователей;
 - хранение исходных данных об играх;
 - работа с изображениями и скриншотами;
@@ -25,7 +27,15 @@ Backend предоставляет базовую инфраструктуру �
 - парсинг данных Steam;
 - отдельный UI для запуска и контроля процесса парсинга.
 
-Рекомендательная логика и создание embedding-векторов являются отдельной частью общей архитектуры GReSym и не входят непосредственно в данный backend-репозиторий.
+Рекомендательная логика и создание embedding-векторов являются отдельной частью общей архитектуры GReSym (ML-сервис) и не входят непосредственно в данный backend-репозиторий.
+Backend взаимодействует с ML-сервисом двумя способами:
+
+- **HTTP** — запрос рекомендаций: backend отправляет оценки пользователя в `POST /recommendations` ML-сервиса
+  и получает список игр с оценкой сходства. Если ML-сервис недоступен или у пользователя нет подходящих оценок,
+  возвращаются популярные игры;
+- **RabbitMQ** — запросы на векторизацию: при изменении названия или описания игры администратором
+  (а также через `POST /api/admin/games/vectorize`) backend публикует сообщение `{gameId, reason}`
+  в exchange `gresym.tasks` (очередь `ml.vectorize-game`).
 
 ## Архитектура
 
@@ -60,6 +70,8 @@ Web API на ASP.NET.
 
 - `AuthController` — регистрация и авторизация;
 - `UsersController` — работа с пользователями;
+- `RatingsController` — оценки игр пользователем (`/api/users/me/ratings`);
+- `RecommendationsController` — рекомендации (`/api/users/me/recommendations`);
 - `GamesController` — работа с играми;
 - `AdminController` — административные операции.
 
@@ -82,6 +94,8 @@ Web API на ASP.NET.
 AuthService
 GamesService
 JwtTokenService
+RatingsService
+RecommendationsService
 ReviewsService
 UsersService
 ```
@@ -125,7 +139,9 @@ MetacriticSource
 - конфигурацию сущностей;
 - репозитории;
 - Unit of Work;
-- миграции.
+- миграции;
+- HTTP-клиент ML-сервиса (`Ml/`);
+- публикацию сообщений в RabbitMQ (`Messaging/`).
 
 Используется `ApplicationDbContext` и набор специализированных репозиториев для работы с основными сущностями.
 
@@ -185,6 +201,8 @@ appsettings.example.json (в git) и генерируемый из него apps
 - Linux/Unix-подобная система;
 - .NET SDK;
 - MariaDB/MySQL;
+- RabbitMQ (для очереди векторизации; API запускается и без него, но запросы на векторизацию не отправятся);
+- ML-сервис GReSym (для персональных рекомендаций; без него возвращаются популярные игры);
 - `jq`;
 - `openssl`.
 
@@ -211,7 +229,7 @@ dotnet tool install --global dotnet-ef
 
 | Пример (в git) | Генерируемый файл (не в git) |
 |---|---|
-| `config.example.json` | `config.json` — учётные данные БД и JWT |
+| `config.example.json` | `config.json` — учётные данные БД, JWT и RabbitMQ |
 | `GReSym.API/appsettings.example.json` | `GReSym.API/appsettings.json` |
 | `GReSym.Infrastructure/appsettings.example.json` | `GReSym.Infrastructure/appsettings.json` |
 | `GReSym.Parser.UI/appsettings.example.json` | `GReSym.Parser.UI/appsettings.json` |
@@ -229,7 +247,9 @@ dotnet tool install --global dotnet-ef
   "user": "xxx",
   "password": "xxx",
   "jwt_expire_minutes": 60,
-  "jwt_key": "xxx"
+  "jwt_key": "xxx",
+  "rabbitmq_user": "xxx",
+  "rabbitmq_password": "xxx"
 }
 ```
 
@@ -244,6 +264,8 @@ dotnet tool install --global dotnet-ef
 | `password` | Пароль пользователя базы данных |
 | `jwt_expire_minutes` | Время жизни JWT-токена в минутах |
 | `jwt_key` | Секретный ключ для подписи JWT |
+| `rabbitmq_user` | Пользователь RabbitMQ |
+| `rabbitmq_password` | Пароль пользователя RabbitMQ |
 
 Значения `""`, `null`, `xxx` и `###` считаются незаполненными: `setup` завершится с ошибкой и перечислит,
 какие параметры нужно указать (кроме `jwt_key` и `jwt_expire_minutes`).
@@ -260,7 +282,7 @@ dotnet tool install --global dotnet-ef
 `config.json` и `appsettings.json` содержат учётные данные базы данных и секретный JWT-ключ. Они перечислены в `.gitignore`
 и не должны попадать в репозиторий. В git хранятся только `*.example.json` с заглушками.
 
-Несекретные настройки (логирование, `Jwt.Issuer`, `Jwt.Audience` и т.п.) меняются в соответствующем
+Несекретные настройки (логирование, `Jwt.Issuer`, `Jwt.Audience`, адрес ML-сервиса `Ml.BaseUrl`, имена очередей `RabbitMq.*` и т.п.) меняются в соответствующем
 `appsettings.example.json`, после чего нужно повторно выполнить `./manage.sh setup`. Ручные правки в `appsettings.json`
 перезаписываются при каждом `setup`.
 
@@ -278,11 +300,11 @@ chmod +x manage.sh
 Команда `setup`:
 
 1. создаёт `config.json` из `config.example.json`, если его нет (и завершается для заполнения);
-2. проверяет, что все параметры БД заполнены;
+2. проверяет, что все параметры БД и RabbitMQ заполнены;
 3. проверяет JWT-ключ и при необходимости генерирует новый;
 4. формирует строку подключения к БД;
 5. для `GReSym.API`, `GReSym.Infrastructure` и `GReSym.Parser.UI` заново создаёт `appsettings.json` из
-   `appsettings.example.json`, подставляя строку подключения (и JWT-ключ/время жизни для API). Права на файл: `600`.
+   `appsettings.example.json`, подставляя строку подключения (и JWT-ключ/время жизни, учётные данные RabbitMQ для API). Права на файл: `600`.
 
 ## База данных
 
@@ -327,6 +349,21 @@ migration_YYYYMMDDTHHMM
 ```bash
 ./manage.sh database update
 ```
+
+### Дамп и восстановление
+
+Данные (каталог игр из Steam) в репозиторий не входят. Для переноса базы на другое устройство используется дамп:
+
+```bash
+./manage.sh database dump                    # → dumps/GamesRecommend-YYYYMMDDTHHMM.sql.zst
+./manage.sh database dump ~/gresym.sql.gz    # свой путь; сжатие по расширению: .sql / .sql.gz / .sql.zst
+./manage.sh database restore <файл> [--yes]  # на новом устройстве, после ./manage.sh setup
+```
+
+Подключение берётся из `config.json`. Каталог `dumps/` игнорируется git.
+`restore` создаёт базу, если её нет (пользователю нужны права `CREATE`), и спрашивает подтверждение, если в ней уже есть таблицы
+(`--yes` — без вопроса). Таблицы из дампа пересоздаются. Дамп содержит `__EFMigrationsHistory`, поэтому после восстановления
+`./manage.sh database update` нужен только при наличии более новых миграций.
 
 ## Запуск
 

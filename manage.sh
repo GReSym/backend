@@ -66,6 +66,8 @@ load_config() {
     DB_PASSWORD=$(get_json_value "$CONFIG_FILE" "password")
     JWT_KEY=$(get_json_value "$CONFIG_FILE" "jwt_key")
     JWT_EXPIRE=$(get_json_value "$CONFIG_FILE" "jwt_expire_minutes")
+    RABBITMQ_USER=$(get_json_value "$CONFIG_FILE" "rabbitmq_user")
+    RABBITMQ_PASSWORD=$(get_json_value "$CONFIG_FILE" "rabbitmq_password")
 
     local missing=()
     is_placeholder "$SERVER" && missing+=("server")
@@ -73,6 +75,8 @@ load_config() {
     is_placeholder "$DATABASE" && missing+=("database")
     is_placeholder "$DB_USER" && missing+=("user")
     is_placeholder "$DB_PASSWORD" && missing+=("password")
+    is_placeholder "$RABBITMQ_USER" && missing+=("rabbitmq_user")
+    is_placeholder "$RABBITMQ_PASSWORD" && missing+=("rabbitmq_password")
 
     if (( ${#missing[@]} > 0 )); then
         echo "Ошибка: в $CONFIG_FILE не заполнены параметры: ${missing[*]}"
@@ -112,7 +116,7 @@ validate_and_generate_jwt_key() {
 }
 
 # Генерирует <проект>/appsettings.json из <проект>/appsettings.example.json
-# Строка подключения и JWT подставляются только если соответствующие секции есть в примере
+# Строка подключения, JWT и RabbitMQ подставляются только если соответствующие секции есть в примере
 generate_appsettings() {
     local project_path="$1"
     local example="$project_path/appsettings.example.json"
@@ -128,13 +132,19 @@ generate_appsettings() {
     tmp=$(mktemp)
     jq --arg conn "$DB_CONNECTION" \
        --arg key "$JWT_KEY" \
-       --argjson expire "$JWT_EXPIRE" '
+       --argjson expire "$JWT_EXPIRE" \
+       --arg mq_user "$RABBITMQ_USER" \
+       --arg mq_password "$RABBITMQ_PASSWORD" '
         if (.ConnectionStrings? | type) == "object" then
             .ConnectionStrings.DefaultConnection = $conn
         else . end
         |
         if (.Jwt? | type) == "object" then
             .Jwt.Key = $key | .Jwt.ExpireMinutes = $expire
+        else . end
+        |
+        if (.RabbitMq? | type) == "object" then
+            .RabbitMq.User = $mq_user | .RabbitMq.Password = $mq_password
         else . end
     ' "$example" > "$tmp" && mv "$tmp" "$target" && chmod 600 "$target"
 }
@@ -209,6 +219,128 @@ database_update() {
     dotnet_ef database update
 }
 
+DUMPS_DIR="dumps"
+
+# Находит клиент MariaDB (имена mariadb-* или старые mysql*)
+find_db_tool() {
+    local name
+    for name in "$@"; do
+        command -v "$name" >/dev/null && { echo "$name"; return 0; }
+    done
+    echo "Ошибка: не найден ни один из: $*" >&2
+    return 1
+}
+
+# Временный option-файл с учётными данными из config.json (пароль не попадает в командную строку)
+# Передаётся через --defaults-file, чтобы ~/.my.cnf и /etc/my.cnf не переопределяли пользователя/хост
+# Удаляется при выходе из скрипта
+create_db_defaults_file() {
+    DB_DEFAULTS_FILE=$(mktemp)
+    chmod 600 "$DB_DEFAULTS_FILE"
+    trap 'rm -f "$DB_DEFAULTS_FILE"' EXIT
+    local password="${DB_PASSWORD//\\/\\\\}"
+    password="${password//\"/\\\"}"
+    {
+        echo "[client]"
+        echo "host=$SERVER"
+        echo "port=$PORT"
+        echo "user=$DB_USER"
+        echo "password=\"$password\""
+        echo "default-character-set=utf8mb4"
+    } > "$DB_DEFAULTS_FILE"
+}
+
+# Команда (рас)паковки по расширению файла: .sql, .sql.gz, .sql.zst
+compression_for() {
+    case "$1" in
+        *.sql.zst) command -v zstd >/dev/null || { echo "Ошибка: zstd не установлен" >&2; return 1; }; echo "zstd" ;;
+        *.sql.gz)  echo "gzip" ;;
+        *.sql)     echo "cat" ;;
+        *) echo "Ошибка: неизвестное расширение $1 (ожидается .sql, .sql.gz или .sql.zst)" >&2; return 1 ;;
+    esac
+}
+
+database_dump() {
+    local target="$1"
+    local dump_tool compressor
+    check_config
+    load_config
+    dump_tool=$(find_db_tool mariadb-dump mysqldump) || exit 1
+
+    if [[ -z "$target" ]]; then
+        local ext="sql.gz"
+        command -v zstd >/dev/null && ext="sql.zst"
+        mkdir -p "$DUMPS_DIR"
+        target="$DUMPS_DIR/${DATABASE}-$(date +%Y%m%dT%H%M).$ext"
+    fi
+    compressor=$(compression_for "$target") || exit 1
+    if [[ -e "$target" ]]; then
+        echo "Ошибка: $target уже существует"
+        exit 1
+    fi
+
+    create_db_defaults_file
+    echo "Создаём дамп $DATABASE ($SERVER:$PORT) → $target"
+    # Без --databases: в дампе нет CREATE DATABASE/USE, его можно восстановить в базу с любым именем
+    local compress_cmd=("$compressor")
+    case "$compressor" in
+        zstd) compress_cmd=(zstd -q -T0 -19) ;;
+        gzip) compress_cmd=(gzip -9) ;;
+    esac
+    if "$dump_tool" --defaults-file="$DB_DEFAULTS_FILE" \
+            --single-transaction --quick --triggers \
+            "$DATABASE" | "${compress_cmd[@]}" > "$target"; then
+        echo "Готово: $target ($(du -h "$target" | cut -f1))"
+    else
+        rm -f "$target"
+        echo "Ошибка при создании дампа"
+        exit 1
+    fi
+}
+
+database_restore() {
+    local source="$1"
+    local assume_yes="$2"
+    local client decompressor table_count
+    if [[ -z "$source" ]]; then
+        echo "Использование: ./manage.sh database restore <файл.sql[.gz|.zst]> [--yes]"
+        exit 1
+    fi
+    [[ -f "$source" ]] || { echo "Ошибка: файл $source не найден"; exit 1; }
+    decompressor=$(compression_for "$source") || exit 1
+    check_config
+    load_config
+    client=$(find_db_tool mariadb mysql) || exit 1
+    create_db_defaults_file
+
+    if ! "$client" --defaults-file="$DB_DEFAULTS_FILE" -e \
+            "CREATE DATABASE IF NOT EXISTS \`$DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"; then
+        echo "Ошибка: не удалось подключиться или создать базу $DATABASE (нужны права CREATE у пользователя $DB_USER)"
+        exit 1
+    fi
+
+    table_count=$("$client" --defaults-file="$DB_DEFAULTS_FILE" -N -B -e \
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$DATABASE';") || exit 1
+    if (( table_count > 0 )) && [[ "$assume_yes" != "--yes" ]]; then
+        echo "В базе $DATABASE уже есть таблицы ($table_count). Таблицы из дампа будут удалены и созданы заново."
+        read -r -p "Продолжить? [y/N] " answer
+        [[ "$answer" =~ ^[YyДд]$ ]] || { echo "Отменено"; exit 1; }
+    fi
+
+    local decompress_cmd=(cat "$source")
+    case "$decompressor" in
+        zstd) decompress_cmd=(zstd -q -dc "$source") ;;
+        gzip) decompress_cmd=(gzip -dc "$source") ;;
+    esac
+    echo "Восстанавливаем $source → $DATABASE ($SERVER:$PORT)"
+    if "${decompress_cmd[@]}" | "$client" --defaults-file="$DB_DEFAULTS_FILE" "$DATABASE"; then
+        echo "Готово. Новые миграции (если есть) применяются через ./manage.sh database update"
+    else
+        echo "Ошибка при восстановлении"
+        exit 1
+    fi
+}
+
 # Основная логика скрипта
 case "${1:-}" in
     "setup")
@@ -259,8 +391,14 @@ case "${1:-}" in
             "update")
                 database_update
                 ;;
+            "dump")
+                database_dump "${3:-}"
+                ;;
+            "restore")
+                database_restore "${3:-}" "${4:-}"
+                ;;
             *)
-                echo "Использование: ./manage.sh database {migrate|update}"
+                echo "Использование: ./manage.sh database {migrate|update|dump|restore}"
                 exit 1
                 ;;
         esac
@@ -274,6 +412,8 @@ case "${1:-}" in
         echo "  run parser        — запустить Parser UI"
         echo "  database migrate  — создать миграцию, опционально можно задать название миграции"
         echo "  database update   — применить миграции"
+        echo "  database dump     — дамп БД (по умолчанию в dumps/, .sql.zst), опционально можно задать путь (.sql/.sql.gz/.sql.zst)"
+        echo "  database restore  — восстановить БД из дампа: <файл> [--yes]"
         exit 1
         ;;
 esac

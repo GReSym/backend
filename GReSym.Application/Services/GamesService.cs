@@ -7,6 +7,7 @@ using GReSym.Application.Mapping;
 using GReSym.Core.Entities.GameInfo;
 using GReSym.Core.Exceptions;
 using GReSym.Core.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace GReSym.Application.Services;
 
@@ -14,16 +15,22 @@ public class GamesService : IGamesService
 {
     private readonly IGameRepository _gameRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IGameVectorizationQueue _vectorizationQueue;
+    private readonly ILogger<GamesService> _logger;
 
     // Cache tag name : id
     private readonly ConcurrentDictionary<string, Tag> _tagCache = new(StringComparer.OrdinalIgnoreCase);
 
     public GamesService(
         IGameRepository gameRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IGameVectorizationQueue vectorizationQueue,
+        ILogger<GamesService> logger)
     {
         _gameRepository = gameRepository;
         _unitOfWork = unitOfWork;
+        _vectorizationQueue = vectorizationQueue;
+        _logger = logger;
 
         InitializeTagCache();
     }
@@ -220,6 +227,10 @@ public class GamesService : IGamesService
             throw new GameNotFoundException(gameId.ToString());
         }
 
+        // Vector text = title + description (see ml/src/ml/text.py)
+        var oldTitle = game.Title;
+        var oldDescription = game.Description;
+
         if (!string.IsNullOrWhiteSpace(request.Title))
         {
             game.Title = request.Title.Trim();
@@ -252,7 +263,38 @@ public class GamesService : IGamesService
 
         await _unitOfWork.SaveChangesAsync();
 
+        if (game.Title != oldTitle || game.Description != oldDescription)
+        {
+            await TryEnqueueVectorization(game.Id, "game-updated");
+        }
+
         return GameMapping.ToDtoWithDetails(game);
+    }
+
+    public async Task<VectorizeGamesResponseDto> EnqueueVectorization(VectorizeGamesRequestDto request)
+    {
+        var ids = request.GameIds.Where(id => id > 0).Distinct().ToList();
+
+        if (ids.Count == 0)
+            throw new DomainException("No valid game ids.");
+
+        // Ids missing in MariaDB are fine: the ML worker removes their vectors
+        await _vectorizationQueue.EnqueueAsync(ids, "admin-request");
+
+        return new VectorizeGamesResponseDto { Queued = ids.Count };
+    }
+
+    /// <summary>The game update is already saved, so a broker failure must not fail the request.</summary>
+    private async Task TryEnqueueVectorization(int gameId, string reason)
+    {
+        try
+        {
+            await _vectorizationQueue.EnqueueAsync([gameId], reason);
+        }
+        catch (MessageQueueException e)
+        {
+            _logger.LogWarning(e, "Could not queue vectorization of game {GameId}; its vector is stale until re-queued", gameId);
+        }
     }
 
     public async Task<TagsListResponseDto> GetGameTags(int id)
