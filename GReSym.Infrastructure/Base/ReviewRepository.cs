@@ -44,16 +44,23 @@ public class ReviewRepository : RepositoryBase<Review>, IReviewRepository
         {
             var sql = @"
             INSERT INTO reviews
-            (external_id, game_id, content, rating, recommended, author, source, created_at, updated_at)
+            (external_id, game_id, content, rating, recommended, author, source, created_at, updated_at,
+             votes_up, votes_funny, weighted_vote_score, playtime_at_review, written_during_early_access)
             VALUES
-            (@external_id, @game_id, @content, @rating, @recommended, @author, @source, @created_at, @updated_at)
+            (@external_id, @game_id, @content, @rating, @recommended, @author, @source, @created_at, @updated_at,
+             @votes_up, @votes_funny, @weighted_vote_score, @playtime_at_review, @written_during_early_access)
             ON DUPLICATE KEY UPDATE
                 content = VALUES(content),
                 rating = VALUES(rating),
                 recommended = VALUES(recommended),
                 author = VALUES(author),
                 source = VALUES(source),
-                updated_at = VALUES(updated_at);";
+                updated_at = VALUES(updated_at),
+                votes_up = VALUES(votes_up),
+                votes_funny = VALUES(votes_funny),
+                weighted_vote_score = VALUES(weighted_vote_score),
+                playtime_at_review = VALUES(playtime_at_review),
+                written_during_early_access = VALUES(written_during_early_access);";
 
             await _context.Database.ExecuteSqlRawAsync(
                 sql,
@@ -63,9 +70,14 @@ public class ReviewRepository : RepositoryBase<Review>, IReviewRepository
                 new MySqlParameter("@rating", review.Rating),
                 new MySqlParameter("@recommended", review.Recommended),
                 new MySqlParameter("@author", review.Author),
-                new MySqlParameter("@source", review.Source),
+                new MySqlParameter("@source", review.Source.ToString()),
                 new MySqlParameter("@created_at", review.CreatedAt),
-                new MySqlParameter("@updated_at", review.UpdatedAt)
+                new MySqlParameter("@updated_at", review.UpdatedAt),
+                new MySqlParameter("@votes_up", review.VotesUp),
+                new MySqlParameter("@votes_funny", review.VotesFunny),
+                new MySqlParameter("@weighted_vote_score", review.WeightedVoteScore),
+                new MySqlParameter("@playtime_at_review", review.PlaytimeAtReview),
+                new MySqlParameter("@written_during_early_access", review.WrittenDuringEarlyAccess)
             );
         }
         catch (Exception ex)

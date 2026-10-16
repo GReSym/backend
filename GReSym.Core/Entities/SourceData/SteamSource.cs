@@ -13,6 +13,9 @@ public class SteamSource : BaseEntity
     public int? RecommendationsCount { get; set; }
     public DateOnly? ReleaseDate { get; set; }
     public bool? IsFree { get; set; }
+    // Steam review totals (all languages), filled by the review parser
+    public int? ReviewsPositive { get; set; }
+    public int? ReviewsNegative { get; set; }
     
     // Навигационные свойства
     public virtual Game? Game { get; set; }

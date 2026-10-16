@@ -38,6 +38,14 @@ public class SteamSourceConfiguration : IEntityTypeConfiguration<SteamSource>
         builder.Property(s => s.IsFree)
             .HasColumnName("is_free");
 
+        builder.Property(s => s.ReviewsPositive)
+            .HasColumnName("reviews_positive")
+            .HasComment("Steam total_positive (all languages)");
+
+        builder.Property(s => s.ReviewsNegative)
+            .HasColumnName("reviews_negative")
+            .HasComment("Steam total_negative (all languages)");
+
         // Unique constraint
         builder.HasIndex(s => s.SteamAppId)
             .IsUnique()

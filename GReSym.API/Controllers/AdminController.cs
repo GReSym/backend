@@ -65,6 +65,38 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Games whose vector is out of date (description changed, reviews/sentiment shifted, never vectorized, ...),
+    /// best candidates first. Pick games and send them to <c>POST games/vectorize</c>. Takes a few seconds.
+    /// </summary>
+    /// <param name="reason">Only these reasons (repeatable): description, sentiment, reviews, growth, outdated, missing, deleted.</param>
+    [HttpGet("vectorization/stale")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(StaleGamesResponseDto), 200)]
+    [ProducesResponseType(typeof(string), 400)]
+    [ProducesResponseType(typeof(string), 503)]
+    public async Task<IActionResult> GetStaleVectors(
+        [FromQuery] string[]? reason,
+        [FromQuery] int limit = 100,
+        [FromQuery] int offset = 0,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await _gamesService.GetStaleVectors(reason ?? [], limit, offset, cancellationToken);
+
+            return Ok(result);
+        }
+        catch (DomainException e)
+        {
+            return BadRequest(e.Message);
+        }
+        catch (MlServiceException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "ML service is unavailable.");
+        }
+    }
+
     [HttpPut("games/{gameId:int}/tags")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(TagsListResponseDto), 200)]

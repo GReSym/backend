@@ -1,3 +1,4 @@
+using GReSym.Core.Models;
 using System.Collections.Concurrent;
 using GReSym.Application.DTO.Games;
 using GReSym.Application.DTO.Tags;
@@ -16,6 +17,7 @@ public class GamesService : IGamesService
     private readonly IGameRepository _gameRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGameVectorizationQueue _vectorizationQueue;
+    private readonly IGameVectorIndex _vectorIndex;
     private readonly ILogger<GamesService> _logger;
 
     // Cache tag name : id
@@ -25,11 +27,13 @@ public class GamesService : IGamesService
         IGameRepository gameRepository,
         IUnitOfWork unitOfWork,
         IGameVectorizationQueue vectorizationQueue,
+        IGameVectorIndex vectorIndex,
         ILogger<GamesService> logger)
     {
         _gameRepository = gameRepository;
         _unitOfWork = unitOfWork;
         _vectorizationQueue = vectorizationQueue;
+        _vectorIndex = vectorIndex;
         _logger = logger;
 
         InitializeTagCache();
@@ -282,6 +286,39 @@ public class GamesService : IGamesService
         await _vectorizationQueue.EnqueueAsync(ids, "admin-request");
 
         return new VectorizeGamesResponseDto { Queued = ids.Count };
+    }
+
+    public async Task<StaleGamesResponseDto> GetStaleVectors(IReadOnlyCollection<string> reasons, int limit, int offset,
+        CancellationToken cancellationToken = default)
+    {
+        var unknown = reasons.Where(r => !StaleReasons.All.Contains(r)).ToList();
+        if (unknown.Count > 0)
+            throw new DomainException(
+                $"Unknown reason(s): {string.Join(", ", unknown)}. Known: {string.Join(", ", StaleReasons.All)}.");
+        if (limit is < 1 or > 1000)
+            throw new DomainException("Limit must be between 1 and 1000.");
+        if (offset < 0)
+            throw new DomainException("Offset must not be negative.");
+
+        var report = await _vectorIndex.GetStaleGamesAsync(reasons, limit, offset, cancellationToken);
+
+        return new StaleGamesResponseDto
+        {
+            Collection = report.Collection,
+            TextVersion = report.TextVersion,
+            Vectors = report.Vectors,
+            Games = report.Games,
+            Counts = report.Counts.ToDictionary(),
+            Total = report.Total,
+            Items = report.Items.Select(i => new StaleGameDto
+            {
+                GameId = i.GameId,
+                Score = i.Score,
+                Reasons = i.Reasons.ToList(),
+                VectorizedAt = i.VectorizedAt,
+                Details = i.Details.ToDictionary(),
+            }).ToList(),
+        };
     }
 
     /// <summary>The game update is already saved, so a broker failure must not fail the request.</summary>

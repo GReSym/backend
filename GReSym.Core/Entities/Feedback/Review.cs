@@ -13,6 +13,14 @@ public class Review : BaseEntity
     public float? Rating { get; set; }
     public bool? Recommended { get; set; }
     public string? ExternalId { get; set; }
+
+    // Steam review metadata (used by the ML service to pick reviews for embeddings)
+    public int? VotesUp { get; set; }
+    public int? VotesFunny { get; set; }
+    public double? WeightedVoteScore { get; set; }
+    public int? PlaytimeAtReview { get; set; }  // minutes
+    public bool? WrittenDuringEarlyAccess { get; set; }
+
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     

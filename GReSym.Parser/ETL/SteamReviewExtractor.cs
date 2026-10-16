@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Xml;
 using GReSym.Core.Entities.Feedback;
+using GReSym.Core.Entities.SourceData;
 using GReSym.Core.Enums;
 using GReSym.Core.Interfaces;
 using GReSym.Parser.Interfaces;
@@ -19,6 +20,9 @@ public class SteamReviewResponse
 public class QuerySummary
 {
     public int Num_Reviews { get; set; }
+    // Only returned for the first page (cursor=*)
+    public int? Total_Positive { get; set; }
+    public int? Total_Negative { get; set; }
 }
 
 public class SteamReviewDto
@@ -29,11 +33,16 @@ public class SteamReviewDto
     public bool Voted_Up { get; set; }
     public long Timestamp_Created { get; set; }
     public long Timestamp_Updated { get; set; }
+    public int Votes_Up { get; set; }
+    public int Votes_Funny { get; set; }
+    public double Weighted_Vote_Score { get; set; }  // sent as a JSON string, Web defaults read it
+    public bool Written_During_Early_Access { get; set; }
 }
 
 public class SteamAuthor
 {
     public string Personaname { get; set; } = "";
+    public int? Playtime_At_Review { get; set; }  // minutes
 }
 
 public class SteamReviewExtractor : IDataExtractor<Review>
@@ -119,6 +128,8 @@ public class SteamReviewExtractor : IDataExtractor<Review>
             "Extracting reviews for GameId={GameId}, AppId={AppId}",
             gameId, appId);
 
+        await UpdateReviewTotals(game.SteamSource, client, token);
+
         var reviews = new List<Review>();
 
         reviews.AddRange(
@@ -128,6 +139,43 @@ public class SteamReviewExtractor : IDataExtractor<Review>
             await FetchReviews(appId, gameId, false, client, token));
 
         return reviews;
+    }
+
+    // =========================
+    // TOTALS (ALL LANGUAGES)
+    // =========================
+    // We only store a small sample of positive and negative reviews, so the real ratio comes from Steam's summary.
+    // The ML service uses it to mix the reviews it embeds and to notice sentiment shifts.
+    private async Task UpdateReviewTotals(
+        SteamSource steamSource,
+        HttpClient client,
+        CancellationToken token)
+    {
+        try
+        {
+            var url =
+                $"{BaseUrl}/{steamSource.SteamAppId}" +
+                $"?json=1" +
+                $"&language=all" +
+                $"&purchase_type=all" +
+                $"&num_per_page=1";
+
+            var response =
+                await client.GetFromJsonAsync<SteamReviewResponse>(url, token);
+
+            if (response?.Success != 1 || response.Query_Summary?.Total_Positive == null)
+                return;
+
+            // The game was loaded tracked by this batch's UnitOfWork, so this is a plain UPDATE of steam_source
+            steamSource.ReviewsPositive = response.Query_Summary.Total_Positive;
+            steamSource.ReviewsNegative = response.Query_Summary.Total_Negative;
+            await _uow.SaveChangesAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Failed fetching review totals for AppId {AppId}", steamSource.SteamAppId);
+        }
     }
 
     // =========================
@@ -203,6 +251,11 @@ public class SteamReviewExtractor : IDataExtractor<Review>
             Content = dto.Review,
             Recommended = dto.Voted_Up,
             Rating = dto.Voted_Up ? 1f : 0f,
+            VotesUp = dto.Votes_Up,
+            VotesFunny = dto.Votes_Funny,
+            WeightedVoteScore = dto.Weighted_Vote_Score,
+            PlaytimeAtReview = dto.Author?.Playtime_At_Review,
+            WrittenDuringEarlyAccess = dto.Written_During_Early_Access,
             CreatedAt =
                 DateTimeOffset
                     .FromUnixTimeSeconds(dto.Timestamp_Created)

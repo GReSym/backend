@@ -47,6 +47,23 @@ public class ReviewConfiguration : IEntityTypeConfiguration<Review>
         builder.Property(r => r.ExternalId)
             .HasColumnName("external_id");
 
+        builder.Property(r => r.VotesUp)
+            .HasColumnName("votes_up");
+
+        builder.Property(r => r.VotesFunny)
+            .HasColumnName("votes_funny");
+
+        builder.Property(r => r.WeightedVoteScore)
+            .HasColumnName("weighted_vote_score")
+            .HasComment("Steam helpfulness score, 0..1");
+
+        builder.Property(r => r.PlaytimeAtReview)
+            .HasColumnName("playtime_at_review")
+            .HasComment("Minutes played when the review was written");
+
+        builder.Property(r => r.WrittenDuringEarlyAccess)
+            .HasColumnName("written_during_early_access");
+
         // Relationships
         builder.HasOne(r => r.Game)
             .WithMany(g => g.Reviews)

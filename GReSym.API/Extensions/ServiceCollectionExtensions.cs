@@ -42,6 +42,11 @@ public static class ServiceCollectionExtensions
             client.BaseAddress = new Uri(mlSettings.BaseUrl.TrimEnd('/') + "/");
             client.Timeout = TimeSpan.FromSeconds(mlSettings.TimeoutSeconds);
         });
+        services.AddHttpClient<IGameVectorIndex, MlGameVectorIndex>(client =>
+        {
+            client.BaseAddress = new Uri(mlSettings.BaseUrl.TrimEnd('/') + "/");
+            client.Timeout = TimeSpan.FromSeconds(mlSettings.ScanTimeoutSeconds);
+        });
 
         return services;
     }

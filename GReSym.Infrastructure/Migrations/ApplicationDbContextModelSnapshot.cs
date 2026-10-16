@@ -52,6 +52,11 @@ namespace GReSym.Infrastructure.Migrations
                         .HasColumnType("int")
                         .HasColumnName("game_id");
 
+                    b.Property<int?>("PlaytimeAtReview")
+                        .HasColumnType("int")
+                        .HasColumnName("playtime_at_review")
+                        .HasComment("Minutes played when the review was written");
+
                     b.Property<float?>("Rating")
                         .HasColumnType("float")
                         .HasColumnName("rating");
@@ -70,6 +75,23 @@ namespace GReSym.Infrastructure.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("updated_at");
+
+                    b.Property<int?>("VotesFunny")
+                        .HasColumnType("int")
+                        .HasColumnName("votes_funny");
+
+                    b.Property<int?>("VotesUp")
+                        .HasColumnType("int")
+                        .HasColumnName("votes_up");
+
+                    b.Property<double?>("WeightedVoteScore")
+                        .HasColumnType("double")
+                        .HasColumnName("weighted_vote_score")
+                        .HasComment("Steam helpfulness score, 0..1");
+
+                    b.Property<bool?>("WrittenDuringEarlyAccess")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("written_during_early_access");
 
                     b.HasKey("Id");
 
@@ -313,6 +335,16 @@ namespace GReSym.Infrastructure.Migrations
                     b.Property<DateOnly?>("ReleaseDate")
                         .HasColumnType("date")
                         .HasColumnName("release_date");
+
+                    b.Property<int?>("ReviewsNegative")
+                        .HasColumnType("int")
+                        .HasColumnName("reviews_negative")
+                        .HasComment("Steam total_negative (all languages)");
+
+                    b.Property<int?>("ReviewsPositive")
+                        .HasColumnType("int")
+                        .HasColumnName("reviews_positive")
+                        .HasComment("Steam total_positive (all languages)");
 
                     b.Property<string>("SteamAppId")
                         .IsRequired()

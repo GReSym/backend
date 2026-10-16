@@ -5,4 +5,6 @@ public class MlServiceSettings
 {
     public string BaseUrl { get; set; } = "http://localhost:8000";
     public int TimeoutSeconds { get; set; } = 10;
+    /// <summary>For the stale-vectors scan, which reads every game.</summary>
+    public int ScanTimeoutSeconds { get; set; } = 120;
 }
