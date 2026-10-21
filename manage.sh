@@ -14,8 +14,12 @@ PROJECTS=("GReSym.API" "GReSym.Infrastructure" "GReSym.Parser.UI")
 PLACEHOLDERS=("" "null" "xxx" "###")
 
 command -v jq >/dev/null || { echo "jq не установлен"; exit 1; }
-command -v dotnet >/dev/null || { echo "dotnet не установлен"; exit 1; }
 command -v openssl >/dev/null || { echo "openssl не установлен"; exit 1; }
+
+# dotnet нужен только для run/clean build/database migrate|update: setup и dump/restore работают без него (Docker-окружение)
+require_dotnet() {
+    command -v dotnet >/dev/null || { echo "dotnet не установлен"; exit 1; }
+}
 
 # Функция для получения значения из JSON по ключу
 get_json_value() {
@@ -172,6 +176,7 @@ require_appsettings() {
 }
 
 clean_build() {
+    require_dotnet
     for d in */ ; do
         echo "Очищаем $d"
         (cd "$d" && dotnet clean)
@@ -180,12 +185,14 @@ clean_build() {
 }
 
 run_api() {
+    require_dotnet
     require_appsettings "GReSym.API"
     cd GReSym.API || exit 1
     dotnet run
 }
 
 run_parser() {
+    require_dotnet
     require_appsettings "GReSym.Parser.UI"
     cd GReSym.Parser.UI || exit 1
     dotnet run
@@ -193,6 +200,7 @@ run_parser() {
 
 # dotnet ef может отсутствовать в PATH (глобальные инструменты лежат в ~/.dotnet/tools)
 dotnet_ef() {
+    require_dotnet
     if dotnet ef --version >/dev/null 2>&1; then
         dotnet ef "$@"
     elif [[ -x "$HOME/.dotnet/tools/dotnet-ef" ]]; then
