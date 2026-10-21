@@ -16,8 +16,11 @@ COPY GReSym.Core/ GReSym.Core/
 COPY GReSym.Infrastructure/ GReSym.Infrastructure/
 COPY GReSym.Application/ GReSym.Application/
 COPY GReSym.API/ GReSym.API/
+# chmod: content files keep their host mode (appsettings.example.json may be 600 locally),
+# but the runtime image runs as the non-root "app" user, so everything must be world-readable
 RUN dotnet publish GReSym.API/GReSym.API.csproj -c Release --no-restore -o /app \
-    && cp GReSym.API/appsettings.example.json /app/appsettings.json
+    && cp GReSym.API/appsettings.example.json /app/appsettings.json \
+    && chmod -R a+rX /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
