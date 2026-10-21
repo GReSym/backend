@@ -21,9 +21,10 @@ public static class ServiceCollectionExtensions
 
         services.AddDbContext<ApplicationDbContext>(options =>
         {
+            // Fixed version: AutoDetect opens a connection during DI setup and fails if the DB isn't up yet
             options.UseMySql(
                 connectionString,
-                ServerVersion.AutoDetect(connectionString));
+                new MariaDbServerVersion(new Version(11, 8)));
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();

@@ -55,6 +55,10 @@ public class SteamReviewExtractor : IDataExtractor<Review>
 
     private const string Lang = "russian";
     private const int ReviewsPerType = 5;
+    private const int PageSize = 20;
+
+    /// <summary>Upper bound per game: one page of positive and one of negative reviews.</summary>
+    public const int MaxReviewsPerGame = 2 * PageSize;
 
     public string SourceName => "Steam Reviews";
 
@@ -199,7 +203,7 @@ public class SteamReviewExtractor : IDataExtractor<Review>
                 $"{BaseUrl}/{appId}" +
                 $"?json=1" +
                 $"&language={Lang}" +
-                $"&num_per_page=20" + // больше страницы
+                $"&num_per_page={PageSize}" + // больше страницы
                 $"&purchase_type=all" +
                 $"&review_type={type}" +
                 $"&cursor={Uri.EscapeDataString(cursor)}";

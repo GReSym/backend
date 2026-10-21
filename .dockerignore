@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/logs/
+**/appsettings.json
+**/user_settings.json
+config.json
+dumps/
+.git/
+.vs/
+.idea/
+GReSym.Parser/
+GReSym.Parser.UI/

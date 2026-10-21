@@ -252,7 +252,7 @@ public class ParserEngine : IParserEngine
             }
 
             // Обновляем прогресс
-            UpdateProgress(_currentParsingResult);
+            UpdateProgress(_currentParsingResult, processedInThisSession.Count, identifiersToProcess.Count);
 
             // Небольшая задержка между батчами для снижения нагрузки
             if (currentBatch < totalBatches)
@@ -527,12 +527,14 @@ public class ParserEngine : IParserEngine
         return _currentParsingResult.MarkSuccess();
     }
 
-    private void UpdateProgress(ParsingResult result)
+    private void UpdateProgress(ParsingResult result, int processedIdentifiers, int totalIdentifiers)
     {
         ProgressChanged?.Invoke(this, new ParsingProgressEventArgs
         {
             TotalItems = Math.Max(result.TotalItemsToProcess, result.ItemsProcessed),
             ProcessedItems = result.ItemsProcessed,
+            TotalIdentifiers = totalIdentifiers,
+            ProcessedIdentifiers = processedIdentifiers,
             CurrentSource = _currentState.Source,
             CurrentOperation = "Parsing",
             ParsingResult = result

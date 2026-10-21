@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GReSym.Parser.ETL;
 using GReSym.Parser.Enums;
 using GReSym.Parser.Interfaces;
 using GReSym.Parser.Models;
@@ -162,9 +163,12 @@ public class SteamReviewsTab : IParserTab
     {
         Application.Invoke((s, a) =>
         {
-            double frac = e.TotalItems > 0 ? (double)e.ProcessedItems / e.TotalItems : 0;
-            _progressBar.Fraction = frac;
-            _progressBar.Text = $"Обработано {e.ProcessedItems}/{e.TotalItems}";
+            // Progress is by games: the number of reviews per game isn't known in advance
+            double frac = e.TotalIdentifiers > 0 ? (double)e.ProcessedIdentifiers / e.TotalIdentifiers : 0;
+            _progressBar.Fraction = Math.Min(1, frac);
+            _progressBar.Text =
+                $"Игр {e.ProcessedIdentifiers}/{e.TotalIdentifiers} · отзывов {e.ProcessedItems} " +
+                $"(макс. {e.TotalIdentifiers * SteamReviewExtractor.MaxReviewsPerGame})";
 
             if (e.ParsingResult?.HasWarnings == true && e.ParsingResult.Warnings.Count > _lastWarningCount)
             {

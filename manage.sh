@@ -221,18 +221,41 @@ database_update() {
 
 DUMPS_DIR="dumps"
 
+DEPLOY_COMPOSE="../deploy/compose.yaml"
+
 # Находит клиент MariaDB (имена mariadb-* или старые mysql*)
 find_db_tool() {
     local name
     for name in "$@"; do
         command -v "$name" >/dev/null && { echo "$name"; return 0; }
     done
-    echo "Ошибка: не найден ни один из: $*" >&2
     return 1
+}
+
+# Команда клиента в DB_CMD: на хосте (учётные данные из config.json) или, если клиента на хосте нет,
+# внутри контейнера mariadb из ../deploy (как root, пароль берётся из окружения контейнера и не попадает в командную строку)
+# $1 — имя инструмента в контейнере (mariadb | mariadb-dump), дальше — имена на хосте
+resolve_db_cmd() {
+    local container_tool="$1"
+    shift
+    local host_tool
+    if host_tool=$(find_db_tool "$@"); then
+        create_db_defaults_file
+        DB_CMD=("$host_tool" --defaults-file="$DB_DEFAULTS_FILE")
+    elif [[ -f "$DEPLOY_COMPOSE" ]] && command -v docker >/dev/null; then
+        echo "Клиент MariaDB на хосте не найден, используем контейнер mariadb ($DEPLOY_COMPOSE)" >&2
+        DB_CMD=(docker compose -f "$DEPLOY_COMPOSE" exec -T mariadb
+                sh -c 'tool="$1"; shift; exec "$tool" -uroot -p"$MARIADB_ROOT_PASSWORD" --default-character-set=utf8mb4 "$@"'
+                sh "$container_tool")
+    else
+        echo "Ошибка: не найден ни один из: $* (и нет $DEPLOY_COMPOSE)" >&2
+        return 1
+    fi
 }
 
 # Временный option-файл с учётными данными из config.json (пароль не попадает в командную строку)
 # Передаётся через --defaults-file, чтобы ~/.my.cnf и /etc/my.cnf не переопределяли пользователя/хост
+# protocol=tcp: иначе host=localhost означает unix-сокет, а у MariaDB в Docker его на хосте нет
 # Удаляется при выходе из скрипта
 create_db_defaults_file() {
     DB_DEFAULTS_FILE=$(mktemp)
@@ -244,6 +267,7 @@ create_db_defaults_file() {
         echo "[client]"
         echo "host=$SERVER"
         echo "port=$PORT"
+        echo "protocol=tcp"
         echo "user=$DB_USER"
         echo "password=\"$password\""
         echo "default-character-set=utf8mb4"
@@ -262,10 +286,9 @@ compression_for() {
 
 database_dump() {
     local target="$1"
-    local dump_tool compressor
+    local compressor
     check_config
     load_config
-    dump_tool=$(find_db_tool mariadb-dump mysqldump) || exit 1
 
     if [[ -z "$target" ]]; then
         local ext="sql.gz"
@@ -279,7 +302,7 @@ database_dump() {
         exit 1
     fi
 
-    create_db_defaults_file
+    resolve_db_cmd mariadb-dump mariadb-dump mysqldump || exit 1
     echo "Создаём дамп $DATABASE ($SERVER:$PORT) → $target"
     # Без --databases: в дампе нет CREATE DATABASE/USE, его можно восстановить в базу с любым именем
     local compress_cmd=("$compressor")
@@ -287,7 +310,7 @@ database_dump() {
         zstd) compress_cmd=(zstd -q -T0 -19) ;;
         gzip) compress_cmd=(gzip -9) ;;
     esac
-    if "$dump_tool" --defaults-file="$DB_DEFAULTS_FILE" \
+    if "${DB_CMD[@]}" \
             --single-transaction --quick --triggers \
             "$DATABASE" | "${compress_cmd[@]}" > "$target"; then
         echo "Готово: $target ($(du -h "$target" | cut -f1))"
@@ -301,7 +324,7 @@ database_dump() {
 database_restore() {
     local source="$1"
     local assume_yes="$2"
-    local client decompressor table_count
+    local decompressor table_count
     if [[ -z "$source" ]]; then
         echo "Использование: ./manage.sh database restore <файл.sql[.gz|.zst]> [--yes]"
         exit 1
@@ -310,16 +333,15 @@ database_restore() {
     decompressor=$(compression_for "$source") || exit 1
     check_config
     load_config
-    client=$(find_db_tool mariadb mysql) || exit 1
-    create_db_defaults_file
+    resolve_db_cmd mariadb mariadb mysql || exit 1
 
-    if ! "$client" --defaults-file="$DB_DEFAULTS_FILE" -e \
+    if ! "${DB_CMD[@]}" -e \
             "CREATE DATABASE IF NOT EXISTS \`$DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"; then
         echo "Ошибка: не удалось подключиться или создать базу $DATABASE (нужны права CREATE у пользователя $DB_USER)"
         exit 1
     fi
 
-    table_count=$("$client" --defaults-file="$DB_DEFAULTS_FILE" -N -B -e \
+    table_count=$("${DB_CMD[@]}" -N -B -e \
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$DATABASE';") || exit 1
     if (( table_count > 0 )) && [[ "$assume_yes" != "--yes" ]]; then
         echo "В базе $DATABASE уже есть таблицы ($table_count). Таблицы из дампа будут удалены и созданы заново."
@@ -333,7 +355,7 @@ database_restore() {
         gzip) decompress_cmd=(gzip -dc "$source") ;;
     esac
     echo "Восстанавливаем $source → $DATABASE ($SERVER:$PORT)"
-    if "${decompress_cmd[@]}" | "$client" --defaults-file="$DB_DEFAULTS_FILE" "$DATABASE"; then
+    if "${decompress_cmd[@]}" | "${DB_CMD[@]}" "$DATABASE"; then
         echo "Готово. Новые миграции (если есть) применяются через ./manage.sh database update"
     else
         echo "Ошибка при восстановлении"

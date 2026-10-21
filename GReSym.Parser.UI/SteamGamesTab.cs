@@ -4,6 +4,7 @@ using GReSym.Parser.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -95,7 +96,23 @@ public class SteamGamesTab : IParserTab
         int minAppId = int.TryParse(_minAppIdEntry.Text, out var mi) ? mi : 1;
         int maxAppId = int.TryParse(_maxAppIdEntry.Text, out var ma) ? ma : 500;
 
-        var appIds = await GetFilteredAppIds(minAppId, maxAppId);
+        List<string> appIds;
+        try
+        {
+            appIds = await GetFilteredAppIds(minAppId, maxAppId);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
+        {
+            LogError($"Steam отклонил API-ключ ({(int)ex.StatusCode}): проверьте ключ или очистите поле, " +
+                     "чтобы парсить диапазон appid без фильтрации");
+            return;
+        }
+        catch (Exception ex)
+        {
+            // async void handler: an exception here would crash into the GTK main loop
+            LogError($"Не удалось получить список игр Steam: {ex.Message}");
+            return;
+        }
         LogMessage($"Отфильтровано {appIds.Count} игр");
 
         string checkpoint = _checkpointsComboBox.ActiveText;
@@ -130,7 +147,7 @@ public class SteamGamesTab : IParserTab
         var result = new List<string>();
         using var http = new HttpClient();
 
-        int lastAppId = minAppId;
+        int lastAppId = minAppId - 1;  // last_appid is exclusive
         int maxResults = maxAppId - minAppId + 1;
 
         while (true)
