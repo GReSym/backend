@@ -30,7 +30,6 @@ public class ApplicationDbContext : DbContext
 
     // Source Data
     public DbSet<SteamSource> SteamSources => Set<SteamSource>();
-    public DbSet<MetacriticSource> MetacriticSources => Set<MetacriticSource>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

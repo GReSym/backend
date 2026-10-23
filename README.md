@@ -124,7 +124,6 @@ User
 UserGameRate
 Review
 SteamSource
-MetacriticSource
 ```
 
 ### GReSym.Infrastructure
@@ -511,7 +510,6 @@ JWT используется API для идентификации автори�
 - ценах;
 - скриншотах;
 - данных Steam;
-- данных Metacritic;
 - пользовательских оценках;
 - пользовательских отзывах.
 

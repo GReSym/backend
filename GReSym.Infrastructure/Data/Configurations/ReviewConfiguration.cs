@@ -22,7 +22,7 @@ public class ReviewConfiguration : IEntityTypeConfiguration<Review>
             .HasColumnName("source")
             .HasConversion<string>()
             .HasMaxLength(64)
-            .HasComment("'steam', 'metacritic', 'etc.'");
+            .HasComment("'steam', 'internal', 'etc.'");
 
         builder.Property(r => r.Author)
             .HasColumnName("author")

@@ -18,7 +18,7 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
             .FirstOrDefaultAsync(g => g.Title == title);
     }
 
-    public async Task<Game?> GetBySteamAppIdAsync(string steamAppId)
+    public async Task<Game?> GetBySteamAppIdAsync(int steamAppId)
     {
         return await _dbSet
             .Include(g => g.SteamSource)
@@ -122,7 +122,7 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
             .ToListAsync();
     }
 
-    public async Task<bool> ExistsBySteamAppIdAsync(string steamAppId)
+    public async Task<bool> ExistsBySteamAppIdAsync(int steamAppId)
     {
         return await _dbSet
             .Include(g => g.SteamSource)
@@ -143,7 +143,6 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
                 .ThenInclude(gt => gt.Tag)
             .Include(g => g.Screenshots)
             .Include(g => g.SteamSource)
-            .Include(g => g.MetacriticSource)
             .FirstOrDefaultAsync(g => g.Id == id);
     }
 }

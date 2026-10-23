@@ -186,7 +186,7 @@ public class SteamReviewExtractor : IDataExtractor<Review>
     // FETCH POSITIVE / NEGATIVE
     // =========================
     private async Task<IEnumerable<Review>> FetchReviews(
-        string appId,
+        int appId,
         int gameId,
         bool positive,
         HttpClient client,

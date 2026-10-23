@@ -21,7 +21,6 @@ public class Game : AuditableEntity
     public virtual ICollection<Review> Reviews { get; set; } = new Collection<Review>();
     public virtual ICollection<UserGameRate> UserGameRates { get; set; } = new Collection<UserGameRate>();
     public virtual SteamSource? SteamSource { get; set; }
-    public virtual MetacriticSource? MetacriticSource { get; set; }
     
     // Вычисляемые свойства (только для чтения)
     public ICollection<Tag> Tags => GameTags.Select(gt => gt.Tag).ToList();

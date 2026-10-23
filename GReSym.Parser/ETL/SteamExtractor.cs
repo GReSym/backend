@@ -29,6 +29,8 @@ public class SteamExtractor : IDataExtractor<Game>
     {
         if (client == null)
             throw new ArgumentNullException(nameof(client));
+        if (!int.TryParse(steamAppId, out _))
+            throw new ArgumentException($"Steam AppID must be an integer: '{steamAppId}'", nameof(steamAppId));
 
         try
         {
@@ -254,7 +256,7 @@ public class SteamExtractor : IDataExtractor<Game>
         // Steam Source Information
         game.SteamSource = new SteamSource
         {
-            SteamAppId = steamAppId,
+            SteamAppId = int.Parse(steamAppId),
             Price = ExtractPrice(gameData),
             RecommendationsCount = gameData["recommendations"]?["total"]?.Value<int>(),
             ReleaseDate = game.ReleaseDate,

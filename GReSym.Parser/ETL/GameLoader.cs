@@ -114,7 +114,7 @@ public class GameLoader : IDataLoader<Game>
         // Проверяем, существует ли игра
         Game? existingGame = null;
 
-        if (game.SteamSource != null && !string.IsNullOrEmpty(game.SteamSource.SteamAppId))
+        if (game.SteamSource is { SteamAppId: > 0 })
         {
             existingGame = await _unitOfWork.Games.GetBySteamAppIdAsync(game.SteamSource.SteamAppId);
         }
@@ -183,20 +183,6 @@ public class GameLoader : IDataLoader<Game>
             }
         }
 
-        // Обновляем MetacriticSource
-        if (newGame.MetacriticSource != null)
-        {
-            if (existingGame.MetacriticSource == null)
-            {
-                existingGame.MetacriticSource = newGame.MetacriticSource;
-                existingGame.MetacriticSource.GameId = existingGame.Id;
-            }
-            else
-            {
-                UpdateMetacriticSource(existingGame.MetacriticSource, newGame.MetacriticSource);
-            }
-        }
-
         // Обновляем теги
         await UpdateTags(existingGame, newGame, cancellationToken);
 
@@ -219,15 +205,6 @@ public class GameLoader : IDataLoader<Game>
         existing.IsFree = newSource.IsFree;
     }
 
-    private void UpdateMetacriticSource(MetacriticSource existing, MetacriticSource newSource)
-    {
-        existing.MetacriticUrl = newSource.MetacriticUrl;
-        existing.Metascore = newSource.Metascore;
-        existing.UserScore = newSource.UserScore;
-        existing.RatingCount = newSource.RatingCount;
-        existing.CriticReviewsCount = newSource.CriticReviewsCount;
-        existing.UserReviewsCount = newSource.UserReviewsCount;
-    }
     private async Task ProcessTags(Game game, CancellationToken cancellationToken)
     {
         if (game.GameTags == null || !game.GameTags.Any())

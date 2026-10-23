@@ -21,8 +21,7 @@ public class SteamSourceConfiguration : IEntityTypeConfiguration<SteamSource>
 
         builder.Property(s => s.SteamAppId)
             .HasColumnName("steam_app_id")
-            .IsRequired()
-            .HasMaxLength(32);
+            .IsRequired();
 
         builder.Property(s => s.Price)
             .HasColumnName("price")

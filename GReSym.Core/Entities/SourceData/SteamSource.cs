@@ -8,7 +8,7 @@ namespace GReSym.Core.Entities.SourceData;
 public class SteamSource : BaseEntity
 {
     public int? GameId { get; set; }
-    public string SteamAppId { get; set; } = string.Empty;
+    public int SteamAppId { get; set; }
     public decimal? Price { get; set; }
     public int? RecommendationsCount { get; set; }
     public DateOnly? ReleaseDate { get; set; }

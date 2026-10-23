@@ -74,11 +74,6 @@ public class GameConfiguration : IEntityTypeConfiguration<Game>
             .HasForeignKey<SteamSource>(s => s.GameId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(g => g.MetacriticSource)
-            .WithOne(m => m.Game)
-            .HasForeignKey<MetacriticSource>(m => m.GameId)
-            .OnDelete(DeleteBehavior.Cascade);
-
         builder.HasMany(g => g.GameTags)
             .WithOne(gt => gt.Game)
             .OnDelete(DeleteBehavior.Cascade);

@@ -22,6 +22,6 @@ public class GameInfoResponseDto
     // Optional details
     public List<string>? Tags { get; set; }
     public List<string>? Screenshots { get; set; }
-    public string? SteamAppId { get; set; }
+    public int? SteamAppId { get; set; }
 
 }

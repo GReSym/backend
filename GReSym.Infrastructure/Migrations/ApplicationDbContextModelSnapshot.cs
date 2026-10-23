@@ -70,7 +70,7 @@ namespace GReSym.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)")
                         .HasColumnName("source")
-                        .HasComment("'steam', 'metacritic', 'etc.'");
+                        .HasComment("'steam', 'internal', 'etc.'");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)")
@@ -254,58 +254,6 @@ namespace GReSym.Infrastructure.Migrations
                     b.ToTable("tags", (string)null);
                 });
 
-            modelBuilder.Entity("GReSym.Core.Entities.SourceData.MetacriticSource", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasColumnName("id");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int?>("CriticReviewsCount")
-                        .HasColumnType("int")
-                        .HasColumnName("critic_reviews_count");
-
-                    b.Property<int?>("GameId")
-                        .HasColumnType("int")
-                        .HasColumnName("game_id");
-
-                    b.Property<string>("MetacriticUrl")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)")
-                        .HasColumnName("metacritic_url");
-
-                    b.Property<float?>("Metascore")
-                        .HasColumnType("float")
-                        .HasColumnName("metascore");
-
-                    b.Property<int?>("RatingCount")
-                        .HasColumnType("int")
-                        .HasColumnName("rating_count");
-
-                    b.Property<int?>("UserReviewsCount")
-                        .HasColumnType("int")
-                        .HasColumnName("user_reviews_count");
-
-                    b.Property<float?>("UserScore")
-                        .HasColumnType("float")
-                        .HasColumnName("user_score");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GameId")
-                        .IsUnique()
-                        .HasDatabaseName("metacritic_source_games_FK");
-
-                    b.HasIndex("MetacriticUrl")
-                        .IsUnique()
-                        .HasDatabaseName("metacritic_source_unique");
-
-                    b.ToTable("metacritic_source", (string)null);
-                });
-
             modelBuilder.Entity("GReSym.Core.Entities.SourceData.SteamSource", b =>
                 {
                     b.Property<int>("Id")
@@ -346,10 +294,8 @@ namespace GReSym.Infrastructure.Migrations
                         .HasColumnName("reviews_positive")
                         .HasComment("Steam total_positive (all languages)");
 
-                    b.Property<string>("SteamAppId")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("varchar(32)")
+                    b.Property<int>("SteamAppId")
+                        .HasColumnType("int")
                         .HasColumnName("steam_app_id");
 
                     b.HasKey("Id");
@@ -487,16 +433,6 @@ namespace GReSym.Infrastructure.Migrations
                     b.Navigation("Game");
                 });
 
-            modelBuilder.Entity("GReSym.Core.Entities.SourceData.MetacriticSource", b =>
-                {
-                    b.HasOne("GReSym.Core.Entities.GameInfo.Game", "Game")
-                        .WithOne("MetacriticSource")
-                        .HasForeignKey("GReSym.Core.Entities.SourceData.MetacriticSource", "GameId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.Navigation("Game");
-                });
-
             modelBuilder.Entity("GReSym.Core.Entities.SourceData.SteamSource", b =>
                 {
                     b.HasOne("GReSym.Core.Entities.GameInfo.Game", "Game")
@@ -529,8 +465,6 @@ namespace GReSym.Infrastructure.Migrations
             modelBuilder.Entity("GReSym.Core.Entities.GameInfo.Game", b =>
                 {
                     b.Navigation("GameTags");
-
-                    b.Navigation("MetacriticSource");
 
                     b.Navigation("Reviews");
 

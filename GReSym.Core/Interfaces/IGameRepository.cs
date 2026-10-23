@@ -7,7 +7,7 @@ public interface IGameRepository : IRepository<Game>
 {
     // Базовые операции
     Task<Game?> GetByTitleAsync(string title);
-    Task<Game?> GetBySteamAppIdAsync(string steamAppId);
+    Task<Game?> GetBySteamAppIdAsync(int steamAppId);
 
     // Поиск и фильтрация
     Task<IEnumerable<Game>> SearchAsync(string searchTerm, int page = 1, int pageSize = Constants.Api.DefaultPageSize, List<int>? tagsIds = null);
@@ -18,6 +18,6 @@ public interface IGameRepository : IRepository<Game>
     Task<IEnumerable<Game>> GetGamesAsync(int page = 1, int pageSize = Constants.Api.DefaultPageSize, List<int>? tagsIds = null);
 
     // Для парсинга
-    Task<bool> ExistsBySteamAppIdAsync(string steamAppId);
+    Task<bool> ExistsBySteamAppIdAsync(int steamAppId);
     Task<bool> ExistsByTitleAndDeveloperAsync(string title, string developer);
 }
