@@ -18,11 +18,13 @@ public class MlRecommendationEngine : IRecommendationEngine
     public async Task<IReadOnlyList<ScoredGame>> RecommendAsync(
         IReadOnlyCollection<GameRatingSignal> ratings,
         int limit,
+        int? mainstream = null,
         CancellationToken cancellationToken = default)
     {
         var request = new RecommendationsRequest(
             ratings.Select(r => new RatingItem(r.GameId, r.Rating, r.Recommend)).ToList(),
-            limit);
+            limit,
+            mainstream);
 
         try
         {
@@ -59,7 +61,7 @@ public class MlRecommendationEngine : IRecommendationEngine
 
     // Wire format of the ML service (camelCase JSON)
     private record RatingItem(int GameId, int? Rating, bool? Recommend);
-    private record RecommendationsRequest(List<RatingItem> Ratings, int Limit);
+    private record RecommendationsRequest(List<RatingItem> Ratings, int Limit, int? Mainstream);
     private record ScoredItem(int GameId, double Score);
-    private record RecommendationsResponse(List<ScoredItem> Items, int UsedRatings);
+    private record RecommendationsResponse(List<ScoredItem> Items, int UsedRatings, int Mainstream);
 }

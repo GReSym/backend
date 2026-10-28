@@ -1,4 +1,5 @@
 using GReSym.Core.Entities.Base;
+using GReSym.Core.Entities.Evaluation;
 using GReSym.Core.Entities.GameInfo;
 using GReSym.Core.Entities.Feedback;
 using GReSym.Core.Entities.SourceData;
@@ -30,6 +31,11 @@ public class ApplicationDbContext : DbContext
 
     // Source Data
     public DbSet<SteamSource> SteamSources => Set<SteamSource>();
+
+    // Offline evaluation
+    public DbSet<SteamUser> SteamUsers => Set<SteamUser>();
+    public DbSet<SteamUserGame> SteamUserGames => Set<SteamUserGame>();
+    public DbSet<EvaluationRun> EvaluationRuns => Set<EvaluationRun>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

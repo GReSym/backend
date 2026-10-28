@@ -32,9 +32,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IUserGameRateRepository, UserGameRateRepository>();
 
+        services.AddScoped<IEvaluationRepository, EvaluationRepository>();
+
         services.Configure<RabbitMqSettings>(configuration.GetSection("RabbitMq"));
-        services.AddSingleton<RabbitMqVectorizationQueue>();
-        services.AddSingleton<IGameVectorizationQueue>(sp => sp.GetRequiredService<RabbitMqVectorizationQueue>());
+        services.AddSingleton<RabbitMqPublisher>();
+        services.AddSingleton<IGameVectorizationQueue, RabbitMqVectorizationQueue>();
+        services.AddSingleton<IEvaluationQueue, RabbitMqEvaluationQueue>();
+        services.AddHostedService<EvaluationResultsConsumer>();
 
         var mlSettings = configuration.GetSection("Ml").Get<MlServiceSettings>() ?? new MlServiceSettings();
         services.AddHttpClient<IRecommendationEngine, MlRecommendationEngine>(client =>
@@ -61,6 +65,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGamesService, GamesService>();
         services.AddScoped<IRatingsService, RatingsService>();
         services.AddScoped<IRecommendationsService, RecommendationsService>();
+        services.AddScoped<IEvaluationService, EvaluationService>();
 
         return services;
     }

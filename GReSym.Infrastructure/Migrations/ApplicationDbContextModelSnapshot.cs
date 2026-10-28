@@ -22,6 +22,144 @@ namespace GReSym.Infrastructure.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("GReSym.Core.Entities.Evaluation.EvaluationRun", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("finished_at");
+
+                    b.Property<string>("Parameters")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("parameters")
+                        .HasComment("JSON, read by the ML worker");
+
+                    b.Property<string>("Results")
+                        .HasColumnType("longtext")
+                        .HasColumnName("results")
+                        .HasComment("JSON report from the ML worker");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("UsersEvaluated")
+                        .HasColumnType("int")
+                        .HasColumnName("users_evaluated");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("evaluation_runs", (string)null);
+                });
+
+            modelBuilder.Entity("GReSym.Core.Entities.Evaluation.SteamUser", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("CollectedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("collected_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("GamesOwned")
+                        .HasColumnType("int")
+                        .HasColumnName("games_owned");
+
+                    b.Property<int>("GamesPlayed")
+                        .HasColumnType("int")
+                        .HasColumnName("games_played")
+                        .HasComment("Owned games with enough playtime, including those missing from the catalogue");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("ReviewsCount")
+                        .HasColumnType("int")
+                        .HasColumnName("reviews_count");
+
+                    b.Property<string>("SteamIdHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("char(64)")
+                        .HasColumnName("steam_id_hash")
+                        .IsFixedLength()
+                        .HasComment("HMAC-SHA256 of the SteamID64 (hex), for deduplication only");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("steam_users_name_unique");
+
+                    b.HasIndex("SteamIdHash")
+                        .IsUnique()
+                        .HasDatabaseName("steam_users_hash_unique");
+
+                    b.ToTable("steam_users", null, t =>
+                        {
+                            t.HasComment("Anonymized public Steam users for the offline evaluation");
+                        });
+                });
+
+            modelBuilder.Entity("GReSym.Core.Entities.Evaluation.SteamUserGame", b =>
+                {
+                    b.Property<int>("SteamUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("steam_user_id");
+
+                    b.Property<int>("GameId")
+                        .HasColumnType("int")
+                        .HasColumnName("game_id");
+
+                    b.Property<int>("PlaytimeMinutes")
+                        .HasColumnType("int")
+                        .HasColumnName("playtime_minutes");
+
+                    b.Property<bool?>("Recommended")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("recommended")
+                        .HasComment("The user's Steam review: 1 up, 0 down, NULL none");
+
+                    b.HasKey("SteamUserId", "GameId");
+
+                    b.HasIndex("GameId")
+                        .HasDatabaseName("steam_user_games_games_FK");
+
+                    b.ToTable("steam_user_games", (string)null);
+                });
+
             modelBuilder.Entity("GReSym.Core.Entities.Feedback.Review", b =>
                 {
                     b.Property<int>("Id")
@@ -393,6 +531,25 @@ namespace GReSym.Infrastructure.Migrations
                     b.ToTable("users_games_rates", (string)null);
                 });
 
+            modelBuilder.Entity("GReSym.Core.Entities.Evaluation.SteamUserGame", b =>
+                {
+                    b.HasOne("GReSym.Core.Entities.GameInfo.Game", "Game")
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GReSym.Core.Entities.Evaluation.SteamUser", "SteamUser")
+                        .WithMany("Games")
+                        .HasForeignKey("SteamUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Game");
+
+                    b.Navigation("SteamUser");
+                });
+
             modelBuilder.Entity("GReSym.Core.Entities.Feedback.Review", b =>
                 {
                     b.HasOne("GReSym.Core.Entities.GameInfo.Game", "Game")
@@ -460,6 +617,11 @@ namespace GReSym.Infrastructure.Migrations
                     b.Navigation("Game");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GReSym.Core.Entities.Evaluation.SteamUser", b =>
+                {
+                    b.Navigation("Games");
                 });
 
             modelBuilder.Entity("GReSym.Core.Entities.GameInfo.Game", b =>

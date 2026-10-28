@@ -46,7 +46,7 @@ public class RecommendationsService : IRecommendationsService
 
         if (signals.Count > 0)
         {
-            var personal = await GetPersonal(userId, signals, request.Limit, cancellationToken);
+            var personal = await GetPersonal(userId, signals, request.Limit, request.Mainstream, cancellationToken);
             if (personal != null)
                 return personal;
         }
@@ -58,12 +58,13 @@ public class RecommendationsService : IRecommendationsService
         int userId,
         List<GameRatingSignal> signals,
         int limit,
+        int? mainstream,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<ScoredGame> scored;
         try
         {
-            scored = await _engine.RecommendAsync(signals, limit, cancellationToken);
+            scored = await _engine.RecommendAsync(signals, limit, mainstream, cancellationToken);
         }
         catch (RecommendationEngineException e)
         {
@@ -71,7 +72,7 @@ public class RecommendationsService : IRecommendationsService
             return null;
         }
 
-        // Empty when none of the rated games are vectorized yet, or the user only disliked games
+        // Empty when none of the liked games are vectorized yet, or the user only disliked games
         if (scored.Count == 0)
             return null;
 
