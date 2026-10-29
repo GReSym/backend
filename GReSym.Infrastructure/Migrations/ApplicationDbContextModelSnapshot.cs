@@ -531,6 +531,41 @@ namespace GReSym.Infrastructure.Migrations
                     b.ToTable("users_games_rates", (string)null);
                 });
 
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserSettings", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("DislikeMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasDefaultValue("ignore")
+                        .HasColumnName("dislike_mode");
+
+                    b.Property<byte>("DislikeStrength")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint unsigned")
+                        .HasDefaultValue((byte)50)
+                        .HasColumnName("dislike_strength");
+
+                    b.Property<byte>("Mainstream")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint unsigned")
+                        .HasDefaultValue((byte)10)
+                        .HasColumnName("mainstream");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("user_settings", (string)null);
+                });
+
             modelBuilder.Entity("GReSym.Core.Entities.Evaluation.SteamUserGame", b =>
                 {
                     b.HasOne("GReSym.Core.Entities.GameInfo.Game", "Game")
@@ -619,6 +654,17 @@ namespace GReSym.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserSettings", b =>
+                {
+                    b.HasOne("GReSym.Core.Entities.UserInfo.User", "User")
+                        .WithOne("Settings")
+                        .HasForeignKey("GReSym.Core.Entities.UserInfo.UserSettings", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("GReSym.Core.Entities.Evaluation.SteamUser", b =>
                 {
                     b.Navigation("Games");
@@ -639,6 +685,8 @@ namespace GReSym.Infrastructure.Migrations
 
             modelBuilder.Entity("GReSym.Core.Entities.UserInfo.User", b =>
                 {
+                    b.Navigation("Settings");
+
                     b.Navigation("UserGameRates");
                 });
 #pragma warning restore 612, 618

@@ -25,6 +25,7 @@ public class ApplicationDbContext : DbContext
     // // Users
     public DbSet<User> Users => Set<User>();
     public DbSet<UserGameRate> UserGameRates => Set<UserGameRate>();
+    public DbSet<UserSettings> UserSettings => Set<UserSettings>();
 
     // Reviews
     public DbSet<Review> Reviews => Set<Review>();

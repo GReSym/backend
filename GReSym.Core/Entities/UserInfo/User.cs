@@ -12,4 +12,5 @@ public class User : AuditableEntity
     
     // Навигационные свойства
     public virtual ICollection<UserGameRate> UserGameRates { get; set; } = new Collection<UserGameRate>();
+    public virtual UserSettings? Settings { get; set; }
 }

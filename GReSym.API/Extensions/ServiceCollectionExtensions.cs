@@ -31,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGameRepository, GameRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IUserGameRateRepository, UserGameRateRepository>();
+        services.AddScoped<IUserSettingsRepository, UserSettingsRepository>();
 
         services.AddScoped<IEvaluationRepository, EvaluationRepository>();
 
@@ -62,6 +63,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUsersService, UsersService>();
+        services.AddScoped<IUserSettingsService, UserSettingsService>();
         services.AddScoped<IGamesService, GamesService>();
         services.AddScoped<IRatingsService, RatingsService>();
         services.AddScoped<IRecommendationsService, RecommendationsService>();

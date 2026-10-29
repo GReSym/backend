@@ -14,10 +14,12 @@ namespace GReSym.API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly IUsersService _service;
+    private readonly IUserSettingsService _settingsService;
 
-    public UsersController(IUsersService service)
+    public UsersController(IUsersService service, IUserSettingsService settingsService)
     {
         _service = service;
+        _settingsService = settingsService;
     }
 
     [HttpGet("me")]
@@ -64,5 +66,28 @@ public class UsersController : ControllerBase
         {
             return BadRequest(e.Message);
         }
+    }
+
+    [HttpGet("me/settings")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(UserSettingsDto), 200)]
+    [Authorize]
+    public async Task<IActionResult> GetSettings()
+    {
+        var settings = await _settingsService.GetSettings(User.GetUserId());
+
+        return Ok(settings);
+    }
+
+    [HttpPatch("me/settings")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(UserSettingsDto), 200)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), 400)]
+    [Authorize]
+    public async Task<IActionResult> PatchSettings([FromBody] UpdateUserSettingsRequestDto request)
+    {
+        var settings = await _settingsService.UpdateSettings(User.GetUserId(), request);
+
+        return Ok(settings);
     }
 }

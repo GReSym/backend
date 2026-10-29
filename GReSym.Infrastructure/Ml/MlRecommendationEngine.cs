@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using GReSym.Core.Enums;
 using GReSym.Core.Exceptions;
 using GReSym.Core.Interfaces;
 using GReSym.Core.Models;
@@ -18,13 +19,15 @@ public class MlRecommendationEngine : IRecommendationEngine
     public async Task<IReadOnlyList<ScoredGame>> RecommendAsync(
         IReadOnlyCollection<GameRatingSignal> ratings,
         int limit,
-        int? mainstream = null,
+        RecommendationTuning tuning,
         CancellationToken cancellationToken = default)
     {
         var request = new RecommendationsRequest(
             ratings.Select(r => new RatingItem(r.GameId, r.Rating, r.Recommend)).ToList(),
             limit,
-            mainstream);
+            tuning.Mainstream,
+            tuning.DislikeMode.ToName(),
+            tuning.DislikeStrength);
 
         try
         {
@@ -61,7 +64,8 @@ public class MlRecommendationEngine : IRecommendationEngine
 
     // Wire format of the ML service (camelCase JSON)
     private record RatingItem(int GameId, int? Rating, bool? Recommend);
-    private record RecommendationsRequest(List<RatingItem> Ratings, int Limit, int? Mainstream);
+    private record RecommendationsRequest(
+        List<RatingItem> Ratings, int Limit, int Mainstream, string DislikeMode, int DislikeStrength);
     private record ScoredItem(int GameId, double Score);
-    private record RecommendationsResponse(List<ScoredItem> Items, int UsedRatings, int Mainstream);
+    private record RecommendationsResponse(List<ScoredItem> Items, int UsedRatings);
 }

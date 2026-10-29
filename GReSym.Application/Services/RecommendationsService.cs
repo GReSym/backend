@@ -1,6 +1,7 @@
 using GReSym.Application.DTO.Recommendations;
 using GReSym.Application.Interfaces;
 using GReSym.Application.Mapping;
+using GReSym.Core.Enums;
 using GReSym.Core.Exceptions;
 using GReSym.Core.Interfaces;
 using GReSym.Core.Models;
@@ -16,17 +17,20 @@ public class RecommendationsService : IRecommendationsService
 {
     private readonly IUserGameRateRepository _rateRepository;
     private readonly IGameRepository _gameRepository;
+    private readonly IUserSettingsService _settingsService;
     private readonly IRecommendationEngine _engine;
     private readonly ILogger<RecommendationsService> _logger;
 
     public RecommendationsService(
         IUserGameRateRepository rateRepository,
         IGameRepository gameRepository,
+        IUserSettingsService settingsService,
         IRecommendationEngine engine,
         ILogger<RecommendationsService> logger)
     {
         _rateRepository = rateRepository;
         _gameRepository = gameRepository;
+        _settingsService = settingsService;
         _engine = engine;
         _logger = logger;
     }
@@ -46,7 +50,8 @@ public class RecommendationsService : IRecommendationsService
 
         if (signals.Count > 0)
         {
-            var personal = await GetPersonal(userId, signals, request.Limit, request.Mainstream, cancellationToken);
+            var tuning = ApplyOverrides(await _settingsService.GetTuning(userId), request);
+            var personal = await GetPersonal(userId, signals, request.Limit, tuning, cancellationToken);
             if (personal != null)
                 return personal;
         }
@@ -54,17 +59,23 @@ public class RecommendationsService : IRecommendationsService
         return await GetPopular(ratedIds, request.Limit);
     }
 
+    /// <summary>The request's tuning fields win over the stored settings (one-off preview).</summary>
+    private static RecommendationTuning ApplyOverrides(RecommendationTuning stored, RecommendationsRequestDto request) => new(
+        request.Mainstream ?? stored.Mainstream,
+        request.DislikeMode != null ? DislikeModes.Parse(request.DislikeMode) : stored.DislikeMode,
+        request.DislikeStrength ?? stored.DislikeStrength);
+
     private async Task<RecommendationsResponseDto?> GetPersonal(
         int userId,
         List<GameRatingSignal> signals,
         int limit,
-        int? mainstream,
+        RecommendationTuning tuning,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<ScoredGame> scored;
         try
         {
-            scored = await _engine.RecommendAsync(signals, limit, mainstream, cancellationToken);
+            scored = await _engine.RecommendAsync(signals, limit, tuning, cancellationToken);
         }
         catch (RecommendationEngineException e)
         {
