@@ -531,6 +531,113 @@ namespace GReSym.Infrastructure.Migrations
                     b.ToTable("users_games_rates", (string)null);
                 });
 
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserRecommendation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DislikeMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("dislike_mode");
+
+                    b.Property<byte>("DislikeStrength")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("dislike_strength");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("finished_at");
+
+                    b.Property<byte>("GameLimit")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("game_limit")
+                        .HasComment("Requested number of games; older recommendations keep fewer");
+
+                    b.Property<byte>("Mainstream")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("mainstream");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("UsedRatings")
+                        .HasColumnType("int")
+                        .HasColumnName("used_ratings");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("user_recommendations_updated_at_IDX");
+
+                    b.HasIndex("UserId", "Id")
+                        .HasDatabaseName("user_recommendations_user_id_IDX");
+
+                    b.ToTable("user_recommendations", (string)null);
+                });
+
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserRecommendationGame", b =>
+                {
+                    b.Property<int>("RecommendationId")
+                        .HasColumnType("int")
+                        .HasColumnName("recommendation_id");
+
+                    b.Property<int>("GameId")
+                        .HasColumnType("int")
+                        .HasColumnName("game_id");
+
+                    b.Property<bool?>("Liked")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("liked")
+                        .HasComment("The user's feedback; null = none");
+
+                    b.Property<byte>("Position")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("position")
+                        .HasComment("1-based rank");
+
+                    b.Property<double?>("Score")
+                        .HasColumnType("double")
+                        .HasColumnName("score")
+                        .HasComment("ML score; null for popular games");
+
+                    b.HasKey("RecommendationId", "GameId");
+
+                    b.HasIndex("GameId")
+                        .HasDatabaseName("user_recommendation_games_game_id_IDX");
+
+                    b.ToTable("user_recommendation_games", (string)null);
+                });
+
             modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserSettings", b =>
                 {
                     b.Property<int>("UserId")
@@ -654,6 +761,36 @@ namespace GReSym.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserRecommendation", b =>
+                {
+                    b.HasOne("GReSym.Core.Entities.UserInfo.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserRecommendationGame", b =>
+                {
+                    b.HasOne("GReSym.Core.Entities.GameInfo.Game", "Game")
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GReSym.Core.Entities.UserInfo.UserRecommendation", "Recommendation")
+                        .WithMany("Games")
+                        .HasForeignKey("RecommendationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Game");
+
+                    b.Navigation("Recommendation");
+                });
+
             modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserSettings", b =>
                 {
                     b.HasOne("GReSym.Core.Entities.UserInfo.User", "User")
@@ -688,6 +825,11 @@ namespace GReSym.Infrastructure.Migrations
                     b.Navigation("Settings");
 
                     b.Navigation("UserGameRates");
+                });
+
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserRecommendation", b =>
+                {
+                    b.Navigation("Games");
                 });
 #pragma warning restore 612, 618
         }

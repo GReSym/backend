@@ -13,6 +13,8 @@ builder.Configuration
     .AddEnvironmentVariables();
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
+builder.Services.Configure<RecommendationSettings>(
+    builder.Configuration.GetSection("Recommendations"));
 // ---------------- LOGGING (SERILOG) ----------------
 Directory.CreateDirectory("logs");
 

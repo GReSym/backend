@@ -19,6 +19,12 @@ public static class RabbitMqTopology
         await DeclareWorkQueueAsync(channel, settings, settings.EvaluationResultsQueue,
             settings.EvaluationResultsDeadLetterQueue, settings.EvaluationResultsRoutingKey, settings.DeliveryLimit,
             cancellationToken);
+        await DeclareWorkQueueAsync(channel, settings, settings.RecommendationQueue,
+            settings.RecommendationDeadLetterQueue, settings.RecommendationRoutingKey,
+            settings.RecommendationDeliveryLimit, cancellationToken);
+        await DeclareWorkQueueAsync(channel, settings, settings.RecommendationResultsQueue,
+            settings.RecommendationResultsDeadLetterQueue, settings.RecommendationResultsRoutingKey,
+            settings.DeliveryLimit, cancellationToken);
     }
 
     /// <summary>Quorum queue bound to the exchange, dead-lettered to its .dlq with the same routing key.</summary>

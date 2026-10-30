@@ -102,6 +102,18 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
             .ToListAsync();
     }
 
+    public async Task<List<int>> FilterIdsByTagsAsync(IReadOnlyCollection<int> ids, IReadOnlyCollection<int> tagIds)
+    {
+        if (ids.Count == 0)
+            return [];
+
+        return await _dbSet
+            .Where(g => ids.Contains(g.Id))
+            .Where(g => tagIds.All(tid => g.GameTags.Any(gt => gt.TagId == tid)))
+            .Select(g => g.Id)
+            .ToListAsync();
+    }
+
     public async Task<IEnumerable<Game>> GetGamesAsync(int page = 1, int pageSize = Constants.Api.DefaultPageSize, List<int>? tagIds = null)
     {
         var query = _dbSet

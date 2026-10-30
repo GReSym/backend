@@ -15,6 +15,8 @@ public interface IGameRepository : IRepository<Game>
     Task<IEnumerable<Game>> GetPopularGamesAsync(int page = 1, int pageSize = Constants.Api.DefaultPageSize, List<int>? tagIds = null, IReadOnlyCollection<int>? excludeIds = null);
     /// <summary>Games with tags, in no particular order. Unknown ids are skipped.</summary>
     Task<IEnumerable<Game>> GetByIdsAsync(IReadOnlyCollection<int> ids);
+    /// <summary>Those of <paramref name="ids"/> that have all <paramref name="tagIds"/>, in no particular order.</summary>
+    Task<List<int>> FilterIdsByTagsAsync(IReadOnlyCollection<int> ids, IReadOnlyCollection<int> tagIds);
     Task<IEnumerable<Game>> GetGamesAsync(int page = 1, int pageSize = Constants.Api.DefaultPageSize, List<int>? tagsIds = null);
 
     // Для парсинга

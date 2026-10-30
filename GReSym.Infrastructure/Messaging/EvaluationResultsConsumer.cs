@@ -3,89 +3,34 @@ using GReSym.Core.Entities.Evaluation;
 using GReSym.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using RabbitMQ.Client.Exceptions;
 
 namespace GReSym.Infrastructure.Messaging;
 
 /// <summary>
 /// Applies the ML worker's evaluation reports ({runId, status, results?, usersEvaluated?, error?, at}) to evaluation_runs.
-/// Keeps retrying the connection, so the API starts and works while the broker is down; reports wait in the queue.
 /// </summary>
-public sealed class EvaluationResultsConsumer : BackgroundService
+public sealed class EvaluationResultsConsumer : RabbitMqResultsConsumer
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(30);
 
-    private readonly RabbitMqSettings _settings;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<EvaluationResultsConsumer> _logger;
 
     public EvaluationResultsConsumer(IOptions<RabbitMqSettings> settings, IServiceScopeFactory scopeFactory,
         ILogger<EvaluationResultsConsumer> logger)
+        : base(settings.Value, logger)
     {
-        _settings = settings.Value;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            IConnection? connection = null;
-            IChannel? channel = null;
-            try
-            {
-                connection = await RabbitMqConnections.CreateAsync(_settings, "gresym-api-consumer", stoppingToken);
-                channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
-                await RabbitMqTopology.DeclareAsync(channel, _settings, stoppingToken);
-                await channel.BasicQosAsync(0, 1, false, stoppingToken);
+    protected override string QueueName => Settings.EvaluationResultsQueue;
 
-                var consumer = new AsyncEventingBasicConsumer(channel);
-                var consumerChannel = channel;
-                consumer.ReceivedAsync += (_, delivery) => HandleAsync(consumerChannel, delivery, stoppingToken);
-                await channel.BasicConsumeAsync(_settings.EvaluationResultsQueue, autoAck: false, consumer,
-                    stoppingToken);
-
-                _logger.LogInformation("Consuming evaluation results from {Queue}", _settings.EvaluationResultsQueue);
-                // Automatic recovery restores the connection and the consumer after broker restarts
-                await Task.Delay(Timeout.Infinite, stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception e) when (e is BrokerUnreachableException or OperationInterruptedException
-                                          or AlreadyClosedException)
-            {
-                _logger.LogWarning("Message broker unavailable ({Error}), evaluation results not consumed; retrying in {Delay}",
-                    e.Message, ReconnectDelay);
-            }
-            finally
-            {
-                if (channel != null)
-                    await channel.DisposeAsync();
-                if (connection != null)
-                    await connection.DisposeAsync();
-            }
-
-            try
-            {
-                await Task.Delay(ReconnectDelay, stoppingToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-        }
-    }
-
-    private async Task HandleAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken)
+    protected override async Task HandleAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken)
     {
         ResultMessage? message;
         try

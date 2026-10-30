@@ -11,5 +11,7 @@ public class GamesListRequestDto
     public int Limit { get; set; } = 20;
 
     public string? Search { get; set; }
+    /// <summary>true: keyword search (titles, descriptions); false: search by meaning ("песочница с открытым миром").</summary>
+    public bool Exact { get; set; } = true;
     public string? Tags { get; set; }
 }

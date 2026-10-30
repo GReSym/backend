@@ -1,6 +1,7 @@
 using GReSym.Application.DTO.Games;
 using GReSym.Application.DTO.Recommendations;
 using GReSym.Core.Entities.GameInfo;
+using GReSym.Core.Entities.UserInfo;
 
 namespace GReSym.Application.Mapping;
 
@@ -8,32 +9,37 @@ public static class GameMapping
 {
     public static GameInfoResponseDto ToDto(Game game)
     {
-        return ToDto(game, true, false, false);
+        return ToDto(game, false, true, false, false);
     }
 
     public static GameInfoResponseDto ToDtoWithDetails(Game game)
     {
-        return ToDto(game, true, true, true);
+        return ToDto(game, true, true, true, true);
     }
 
-    public static RecommendedGameDto ToRecommendedDto(Game game, double? score)
+    public static RecommendedGameDto ToRecommendedDto(Game game, UserRecommendationGame recommended)
     {
-        var result = Fill(new RecommendedGameDto(), game, true, false, false);
-        result.Score = score;
+        var result = Fill(new RecommendedGameDto(), game, false, true, false, false);
+        result.Position = recommended.Position;
+        result.Score = recommended.Score;
+        result.Liked = recommended.Liked;
         return result;
     }
 
-    public static GameInfoResponseDto ToDto(Game game, bool withTags = true, bool withScreenshots = false, bool withSteamAppId = false)
+    public static GameInfoResponseDto ToDto(Game game, bool withDescription = false, bool withTags = true, bool withScreenshots = false, bool withSteamAppId = false)
     {
-        return Fill(new GameInfoResponseDto(), game, withTags, withScreenshots, withSteamAppId);
+        return Fill(new GameInfoResponseDto(), game, withDescription, withTags, withScreenshots, withSteamAppId);
     }
 
-    private static T Fill<T>(T result, Game game, bool withTags, bool withScreenshots, bool withSteamAppId)
+    private static T Fill<T>(T result, Game game, bool withDescription, bool withTags, bool withScreenshots, bool withSteamAppId)
         where T : GameInfoResponseDto
     {
         result.GameId = game.Id;
         result.Title = game.Title;
-        result.Description = game.Description;
+        if (withDescription) {
+            result.Description = game.Description;
+        }
+
         result.ReleaseDate = game.ReleaseDate;
         result.Developer = game.Developer;
         result.Publisher = game.Publisher;

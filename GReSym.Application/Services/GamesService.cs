@@ -18,7 +18,11 @@ public class GamesService : IGamesService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGameVectorizationQueue _vectorizationQueue;
     private readonly IGameVectorIndex _vectorIndex;
+    private readonly IGameSearchIndex _searchIndex;
     private readonly ILogger<GamesService> _logger;
+
+    // Search results beyond this are noise: the ML service ranks this many and the pages are cut from them
+    private const int SearchResultLimit = 200;
 
     // Cache tag name : id
     private readonly ConcurrentDictionary<string, Tag> _tagCache = new(StringComparer.OrdinalIgnoreCase);
@@ -28,12 +32,14 @@ public class GamesService : IGamesService
         IUnitOfWork unitOfWork,
         IGameVectorizationQueue vectorizationQueue,
         IGameVectorIndex vectorIndex,
+        IGameSearchIndex searchIndex,
         ILogger<GamesService> logger)
     {
         _gameRepository = gameRepository;
         _unitOfWork = unitOfWork;
         _vectorizationQueue = vectorizationQueue;
         _vectorIndex = vectorIndex;
+        _searchIndex = searchIndex;
         _logger = logger;
 
         InitializeTagCache();
@@ -130,10 +136,10 @@ public class GamesService : IGamesService
             }
         }
         
-        if (search == null)
+        if (string.IsNullOrWhiteSpace(search))
             games = await _gameRepository.GetGamesAsync(page, limit, includeTagIds);
         else
-            games = await _gameRepository.SearchAsync(search.Trim(), page, limit, includeTagIds);
+            games = await SearchGames(search.Trim(), request.Exact, page, limit, includeTagIds);
 
         var result = games
             .Select(GameMapping.ToDto)
@@ -144,6 +150,33 @@ public class GamesService : IGamesService
             Count = result.Count,
             Games = result
         };
+    }
+
+    /// <summary>Relevance-ranked search of the ML service (the top <see cref="SearchResultLimit"/> games, paged here),
+    /// or the substring search if the ML service is unavailable.</summary>
+    private async Task<IEnumerable<Game>> SearchGames(string search, bool exact, int page, int limit, List<int>? tagIds)
+    {
+        IReadOnlyList<int> rankedIds;
+        try
+        {
+            rankedIds = await _searchIndex.SearchAsync(search, exact, SearchResultLimit);
+        }
+        catch (MlServiceException e)
+        {
+            _logger.LogWarning(e, "ML search failed, falling back to substring search for {Search}", search);
+            return await _gameRepository.SearchAsync(search, page, limit, tagIds);
+        }
+
+        if (tagIds != null && tagIds.Count > 0)
+        {
+            var matching = (await _gameRepository.FilterIdsByTagsAsync(rankedIds.ToList(), tagIds)).ToHashSet();
+            rankedIds = rankedIds.Where(matching.Contains).ToList();
+        }
+
+        var pageIds = rankedIds.Skip((page - 1) * limit).Take(limit).ToList();
+        var games = (await _gameRepository.GetByIdsAsync(pageIds)).ToDictionary(g => g.Id);
+
+        return pageIds.Where(games.ContainsKey).Select(id => games[id]).ToList();
     }
 
     public async Task<GameInfoResponseDto> GetGame(int id)
