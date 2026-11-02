@@ -6,6 +6,7 @@ namespace GReSym.Core.Interfaces;
 
 public interface IReviewRepository : IRepository<Review>
 {
+    /// <summary>A page of the game's reviews, most helpful first (Steam weighted vote score).</summary>
     Task<IEnumerable<Review>> GetByGameIdAsync(int gameId, int page = 1, int pageSize = Constants.Api.DefaultPageSize);
     Task<IEnumerable<Review>> GetBySourceAsync(ReviewSource source, int page = 1, int pageSize = Constants.Api.DefaultPageSize);
     Task<int> GetCountByGameAsync(int gameId);

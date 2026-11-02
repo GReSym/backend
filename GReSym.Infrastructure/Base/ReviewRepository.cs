@@ -17,7 +17,11 @@ public class ReviewRepository : RepositoryBase<Review>, IReviewRepository
     public async Task<IEnumerable<Review>> GetByGameIdAsync(int gameId, int page = 1, int pageSize = Constants.Api.DefaultPageSize)
     {
         return await _dbSet
+            .AsNoTracking()
             .Where(r => r.GameId == gameId)
+            .OrderByDescending(r => r.WeightedVoteScore)
+            .ThenByDescending(r => r.VotesUp)
+            .ThenBy(r => r.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();

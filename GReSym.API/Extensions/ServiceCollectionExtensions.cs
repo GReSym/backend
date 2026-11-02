@@ -31,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGameRepository, GameRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IUserGameRateRepository, UserGameRateRepository>();
+        services.AddScoped<IReviewRepository, ReviewRepository>();
         services.AddScoped<IUserSettingsRepository, UserSettingsRepository>();
         services.AddScoped<IUserRecommendationRepository, UserRecommendationRepository>();
 
@@ -69,6 +70,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserSettingsService, UserSettingsService>();
         services.AddScoped<IGamesService, GamesService>();
         services.AddScoped<IRatingsService, RatingsService>();
+        services.AddScoped<IReviewsService, ReviewsService>();
         services.AddScoped<IRecommendationsService, RecommendationsService>();
         services.AddScoped<RecommendationResultHandler>();
         services.AddScoped<IRecommendationResultHandler>(sp => sp.GetRequiredService<RecommendationResultHandler>());

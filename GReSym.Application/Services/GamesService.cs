@@ -54,7 +54,7 @@ public class GamesService : IGamesService
         }
     }
 
-    public async Task<GamesListResponseDto> GetPopularGames(GamesListRequestDto request)
+    public async Task<GamesListResponseDto> GetPopularGames(PopularGamesListRequestDto request)
     {
         int page = request.Page;
 
@@ -365,6 +365,26 @@ public class GamesService : IGamesService
         {
             _logger.LogWarning(e, "Could not queue vectorization of game {GameId}; its vector is stale until re-queued", gameId);
         }
+    }
+
+    /// <summary>Tag names for autocomplete from the tag cache: names starting with the search first, then containing it.</summary>
+    public TagsListResponseDto SuggestTags(TagSuggestionsRequestDto request)
+    {
+        var search = request.Search?.Trim() ?? string.Empty;
+
+        var tags = _tagCache.Keys
+            .Where(name => name.Contains(search, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(name => name.StartsWith(search, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(name => name.Length)
+            .ThenBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .Take(request.Limit)
+            .ToList();
+
+        return new TagsListResponseDto
+        {
+            Count = tags.Count,
+            Tags = tags
+        };
     }
 
     public async Task<TagsListResponseDto> GetGameTags(int id)

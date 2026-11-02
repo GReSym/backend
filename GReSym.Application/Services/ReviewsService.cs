@@ -1,5 +1,3 @@
-using System.Security.Authentication;
-using GReSym.Application.DTO.Auth;
 using GReSym.Application.DTO.Reviews;
 using GReSym.Application.Interfaces;
 using GReSym.Core.Entities.UserInfo;
@@ -27,7 +25,27 @@ public class ReviewsService : IReviewsService
 
     public async Task<GameReviewsListDto> GetGameReviews(int gameId, GameReviewsListRequestDto request)
     {
-        throw new NotImplementedException();
+        var reviews = await _reviewRepository.GetByGameIdAsync(gameId, request.Page, request.Limit);
+
+        var result = reviews
+            .Select(r => new GameReviewDto
+            {
+                Id = r.Id,
+                Source = r.Source.ToString(),
+                Content = r.Content,
+                Recommended = r.Recommended,
+                PlaytimeAtReview = r.PlaytimeAtReview,
+                VotesUp = r.VotesUp,
+                WrittenDuringEarlyAccess = r.WrittenDuringEarlyAccess,
+                CreatedAt = r.CreatedAt
+            })
+            .ToList();
+
+        return new GameReviewsListDto
+        {
+            Count = result.Count,
+            Reviews = result
+        };
     }
 
     public async Task<GameReviewsListDto> GetUserReviews(int userId, GameReviewsListRequestDto request)

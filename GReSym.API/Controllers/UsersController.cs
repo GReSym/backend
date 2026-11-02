@@ -15,11 +15,13 @@ public class UsersController : ControllerBase
 {
     private readonly IUsersService _service;
     private readonly IUserSettingsService _settingsService;
+    private readonly IRatingsService _ratingsService;
 
-    public UsersController(IUsersService service, IUserSettingsService settingsService)
+    public UsersController(IUsersService service, IUserSettingsService settingsService, IRatingsService ratingsService)
     {
         _service = service;
         _settingsService = settingsService;
+        _ratingsService = ratingsService;
     }
 
     [HttpGet("me")]
@@ -66,6 +68,17 @@ public class UsersController : ControllerBase
         {
             return BadRequest(e.Message);
         }
+    }
+
+    [HttpGet("me/stats")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(UserStatsDto), 200)]
+    [Authorize]
+    public async Task<IActionResult> GetStats()
+    {
+        var stats = await _ratingsService.GetStats(User.GetUserId());
+
+        return Ok(stats);
     }
 
     [HttpGet("me/settings")]

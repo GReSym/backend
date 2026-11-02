@@ -20,14 +20,20 @@ public class UserGameRateRepository : IUserGameRateRepository
         return await _dbSet.FindAsync(userId, gameId);
     }
 
-    public async Task<IEnumerable<UserGameRate>> GetByUserAsync(int userId, int page = 1, int pageSize = Constants.Api.DefaultPageSize)
+    public async Task<IEnumerable<UserGameRate>> GetByUserAsync(int userId, int page = 1, int pageSize = Constants.Api.DefaultPageSize,
+        int? minHours = null, bool unevaluated = false)
     {
-        return await _dbSet
-            .AsNoTracking()
+        var query = _dbSet.AsNoTracking().Where(r => r.UserId == userId);
+
+        if (minHours != null)
+            query = query.Where(r => r.PlayerHours > minHours);
+        if (unevaluated)
+            query = query.Where(r => r.Recommend == null);
+
+        return await query
             .Include(r => r.Game)
                 .ThenInclude(g => g.GameTags)
                     .ThenInclude(gt => gt.Tag)
-            .Where(r => r.UserId == userId)
             .OrderBy(r => r.GameId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -39,6 +45,18 @@ public class UserGameRateRepository : IUserGameRateRepository
         return await _dbSet
             .AsNoTracking()
             .Where(r => r.UserId == userId)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<UserGameRate>> GetAllByUserWithTagsAsync(int userId)
+    {
+        return await _dbSet
+            .AsNoTracking()
+            .Include(r => r.Game)
+                .ThenInclude(g => g.GameTags)
+                    .ThenInclude(gt => gt.Tag)
+            .Where(r => r.UserId == userId)
+            .AsSplitQuery()
             .ToListAsync();
     }
 

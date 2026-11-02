@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GReSym.API.Extensions;
 using GReSym.Application.DTO.Games;
+using GReSym.Application.DTO.Reviews;
 using GReSym.Application.DTO.Users;
 using GReSym.Application.Interfaces;
 using GReSym.Core.Exceptions;
@@ -15,10 +16,12 @@ namespace GReSym.API.Controllers;
 public class GamesController : ControllerBase
 {
     private readonly IGamesService _service;
+    private readonly IReviewsService _reviewsService;
 
-    public GamesController(IGamesService service)
+    public GamesController(IGamesService service, IReviewsService reviewsService)
     {
         _service = service;
+        _reviewsService = reviewsService;
     }
 
     [HttpGet]
@@ -61,7 +64,7 @@ public class GamesController : ControllerBase
     [Produces("application/json")]
     [ProducesResponseType(typeof(GamesListResponseDto), 200)]
     [ProducesResponseType(typeof(string), 401)]
-    public async Task<IActionResult> GetPopularGames([FromQuery] GamesListRequestDto request)
+    public async Task<IActionResult> GetPopularGames([FromQuery] PopularGamesListRequestDto request)
     {
         try
         {
@@ -92,5 +95,15 @@ public class GamesController : ControllerBase
         {
             return BadRequest(e.Message);
         }
+    }
+
+    [HttpGet("{gameId:int}/reviews")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(GameReviewsListDto), 200)]
+    public async Task<IActionResult> GetGameReviews(int gameId, [FromQuery] GameReviewsListRequestDto request)
+    {
+        var result = await _reviewsService.GetGameReviews(gameId, request);
+
+        return Ok(result);
     }
 }

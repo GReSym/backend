@@ -34,6 +34,18 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
+// ---------------- CORS ----------------
+// Browser clients on other origins (the Vue dev server uses its own proxy and doesn't need this)
+var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy => policy
+        .WithOrigins(corsOrigins)
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .WithExposedHeaders("Location"));
+});
+
 // ---------------- CONTROLLERS ----------------
 builder.Services.AddControllers();
 
@@ -123,6 +135,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors();
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -5,7 +5,7 @@ namespace GReSym.Application.Interfaces;
 
 public interface IGamesService
 {
-    Task<GamesListResponseDto> GetPopularGames(GamesListRequestDto request);
+    Task<GamesListResponseDto> GetPopularGames(PopularGamesListRequestDto request);
     Task<GamesListResponseDto> GetGames(GamesListRequestDto request);
     Task<GameInfoResponseDto> GetGame(int id);
     Task<GameInfoResponseDto> UpdateGame(int gameId, UpdateGameInfoRequestDto request);
@@ -14,6 +14,7 @@ public interface IGamesService
         CancellationToken cancellationToken = default);
     Task<TagsListResponseDto> UpdateTags(int gameId, TagsListDto request);
     Task<TagsListResponseDto> GetGameTags(int id);
+    TagsListResponseDto SuggestTags(TagSuggestionsRequestDto request);
     Task<TagsListResponseDto> AddTags(int gameId, TagsListDto request);
     Task<TagsListResponseDto> RemoveTags(int gameId, TagsListDto request);
 }

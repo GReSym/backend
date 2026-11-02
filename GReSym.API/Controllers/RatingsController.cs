@@ -29,6 +29,22 @@ public class RatingsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("{gameId:int}")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(GameRatingDto), 200)]
+    [ProducesResponseType(typeof(string), 404)]
+    public async Task<IActionResult> GetRating(int gameId)
+    {
+        try
+        {
+            return Ok(await _service.GetRating(User.GetUserId(), gameId));
+        }
+        catch (RatingNotFoundException e)
+        {
+            return NotFound(e.Message);
+        }
+    }
+
     [HttpPut("{gameId:int}")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(GameRatingDto), 200)]

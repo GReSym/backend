@@ -2,16 +2,18 @@ using System.ComponentModel.DataAnnotations;
 
 namespace GReSym.Application.DTO.Reviews;
 
+/// <summary>A parsed (Steam) review of a game. Authors are not exposed.</summary>
 public class GameReviewDto
 {
     [Required]
-    public string Username { get; set; } = string.Empty;
-    [Range(0, 10)]
-    public int Rating { get; set; }
-    [MaxLength(16384)] // Approx. 20-30 kb of data
-    public string? comment { get; set; }
-    public int HoursInGame { get; set; }
-    public bool Recommend { get; set; }
+    public int Id { get; set; }
     [Required]
     public string Source { get; set; } = string.Empty;
+    public string? Content { get; set; }
+    public bool? Recommended { get; set; }
+    /// <summary>Minutes played when the review was written.</summary>
+    public int? PlaytimeAtReview { get; set; }
+    public int? VotesUp { get; set; }
+    public bool? WrittenDuringEarlyAccess { get; set; }
+    public DateTime? CreatedAt { get; set; }
 }
