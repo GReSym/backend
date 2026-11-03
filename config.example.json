@@ -7,5 +7,6 @@
   "jwt_expire_minutes": 60,
   "jwt_key": "xxx",
   "rabbitmq_user": "xxx",
-  "rabbitmq_password": "xxx"
+  "rabbitmq_password": "xxx",
+  "openinary_api_key": "xxx"
 }

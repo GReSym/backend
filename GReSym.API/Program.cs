@@ -15,6 +15,8 @@ builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<RecommendationSettings>(
     builder.Configuration.GetSection("Recommendations"));
+builder.Services.Configure<MediaSettings>(
+    builder.Configuration.GetSection("Media"));
 // ---------------- LOGGING (SERILOG) ----------------
 Directory.CreateDirectory("logs");
 

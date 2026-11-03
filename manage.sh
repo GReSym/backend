@@ -72,6 +72,12 @@ load_config() {
     JWT_EXPIRE=$(get_json_value "$CONFIG_FILE" "jwt_expire_minutes")
     RABBITMQ_USER=$(get_json_value "$CONFIG_FILE" "rabbitmq_user")
     RABBITMQ_PASSWORD=$(get_json_value "$CONFIG_FILE" "rabbitmq_password")
+    # Необязательный: ключ API Openinary (создаётся в его дашборде), без него миграция картинок недоступна
+    OPENINARY_API_KEY=$(get_json_value "$CONFIG_FILE" "openinary_api_key")
+    if is_placeholder "$OPENINARY_API_KEY"; then
+        echo "openinary_api_key не задан: перенос картинок в Openinary работать не будет"
+        OPENINARY_API_KEY="###"
+    fi
 
     local missing=()
     is_placeholder "$SERVER" && missing+=("server")
@@ -138,7 +144,8 @@ generate_appsettings() {
        --arg key "$JWT_KEY" \
        --argjson expire "$JWT_EXPIRE" \
        --arg mq_user "$RABBITMQ_USER" \
-       --arg mq_password "$RABBITMQ_PASSWORD" '
+       --arg mq_password "$RABBITMQ_PASSWORD" \
+       --arg openinary_key "$OPENINARY_API_KEY" '
         if (.ConnectionStrings? | type) == "object" then
             .ConnectionStrings.DefaultConnection = $conn
         else . end
@@ -149,6 +156,10 @@ generate_appsettings() {
         |
         if (.RabbitMq? | type) == "object" then
             .RabbitMq.User = $mq_user | .RabbitMq.Password = $mq_password
+        else . end
+        |
+        if (.Openinary? | type) == "object" then
+            .Openinary.ApiKey = $openinary_key
         else . end
     ' "$example" > "$tmp" && mv "$tmp" "$target" && chmod 600 "$target"
 }

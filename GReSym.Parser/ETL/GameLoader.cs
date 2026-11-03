@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using GReSym.Core.Common;
 using GReSym.Core.Entities.GameInfo;
 using GReSym.Core.Entities.SourceData;
 using GReSym.Core.Enums;
@@ -166,7 +167,11 @@ public class GameLoader : IDataLoader<Game>
         existingGame.ReleaseDate = newGame.ReleaseDate;
         existingGame.Developer = newGame.Developer;
         existingGame.Publisher = newGame.Publisher;
-        existingGame.HeaderImageUrl = newGame.HeaderImageUrl;
+        // A header already moved to the media store (a path, not a Steam URL) stays: the file there is the same image
+        if (MediaPaths.IsExternal(existingGame.HeaderImageUrl) || string.IsNullOrEmpty(existingGame.HeaderImageUrl))
+        {
+            existingGame.HeaderImageUrl = newGame.HeaderImageUrl;
+        }
         existingGame.UpdatedAt = DateTime.UtcNow;
 
         // Обновляем SteamSource

@@ -134,6 +134,50 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
             .ToListAsync();
     }
 
+    public async Task<List<int>> GetIdsWithExternalImagesAsync(int count, bool withScreenshots,
+        IReadOnlyCollection<int>? ids, IReadOnlyCollection<int> excludeIds, CancellationToken cancellationToken = default)
+    {
+        // StartsWith → LIKE 'http%' (MediaPaths.IsExternal: every external reference is an http(s) URL)
+        var query = withScreenshots
+            ? _dbSet.Where(g => g.HeaderImageUrl!.StartsWith("http") || g.Screenshots.Any(s => s.Url.StartsWith("http")))
+            : _dbSet.Where(g => g.HeaderImageUrl!.StartsWith("http"));
+
+        if (ids != null)
+            query = query.Where(g => ids.Contains(g.Id));
+        if (excludeIds.Count > 0)
+            query = query.Where(g => !excludeIds.Contains(g.Id));
+
+        return await query
+            .OrderByDescending(g => g.SteamSource!.RecommendationsCount)
+            .ThenBy(g => g.Id)
+            .Select(g => g.Id)
+            .Take(count)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<Game>> GetWithScreenshotsByIdsAsync(IReadOnlyCollection<int> ids,
+        CancellationToken cancellationToken = default)
+    {
+        if (ids.Count == 0)
+            return [];
+
+        return await _dbSet
+            .Include(g => g.Screenshots)
+            .Where(g => ids.Contains(g.Id))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<MediaCounts> CountMediaAsync(CancellationToken cancellationToken = default)
+    {
+        var headers = await _dbSet.CountAsync(g => g.HeaderImageUrl != null && g.HeaderImageUrl != "", cancellationToken);
+        var externalHeaders = await _dbSet.CountAsync(g => g.HeaderImageUrl!.StartsWith("http"), cancellationToken);
+        var screenshots = _context.Set<Screenshot>();
+        var screenshotsTotal = await screenshots.CountAsync(cancellationToken);
+        var externalScreenshots = await screenshots.CountAsync(s => s.Url.StartsWith("http"), cancellationToken);
+
+        return new MediaCounts(headers, externalHeaders, screenshotsTotal, externalScreenshots);
+    }
+
     public async Task<bool> ExistsBySteamAppIdAsync(int steamAppId)
     {
         return await _dbSet

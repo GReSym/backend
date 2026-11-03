@@ -392,6 +392,27 @@ namespace GReSym.Infrastructure.Migrations
                     b.ToTable("tags", (string)null);
                 });
 
+            modelBuilder.Entity("GReSym.Core.Entities.Settings.AppSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("app_settings", (string)null);
+                });
+
             modelBuilder.Entity("GReSym.Core.Entities.SourceData.SteamSource", b =>
                 {
                     b.Property<int>("Id")

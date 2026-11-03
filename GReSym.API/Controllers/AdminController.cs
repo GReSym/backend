@@ -2,6 +2,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GReSym.API.Extensions;
 using GReSym.Application.DTO.Games;
+using GReSym.Application.DTO.Media;
+using GReSym.Application.DTO.Settings;
 using GReSym.Application.DTO.Tags;
 using GReSym.Application.DTO.Users;
 using GReSym.Application.Interfaces;
@@ -17,10 +19,85 @@ namespace GReSym.API.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IGamesService _gamesService;
+    private readonly IAppSettingsService _settingsService;
+    private readonly IMediaMigrationService _mediaMigration;
 
-    public AdminController(IGamesService gamesService)
+    public AdminController(IGamesService gamesService, IAppSettingsService settingsService,
+        IMediaMigrationService mediaMigration)
     {
         _gamesService = gamesService;
+        _settingsService = settingsService;
+        _mediaMigration = mediaMigration;
+    }
+
+    [HttpGet("settings")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(AppSettingsDto), 200)]
+    public async Task<IActionResult> GetSettings()
+    {
+        return Ok(await _settingsService.GetSettings());
+    }
+
+    [HttpPatch("settings")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(AppSettingsDto), 200)]
+    [ProducesResponseType(typeof(string), 400)]
+    public async Task<IActionResult> PatchSettings([FromBody] UpdateAppSettingsRequestDto request)
+    {
+        try
+        {
+            return Ok(await _settingsService.UpdateSettings(request));
+        }
+        catch (DomainException e)
+        {
+            return BadRequest(e.Message);
+        }
+    }
+
+    /// <summary>How many headers / screenshots still point at the Steam CDN. Takes a second or two.</summary>
+    [HttpGet("media/stats")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(MediaStatsDto), 200)]
+    public async Task<IActionResult> GetMediaStats(CancellationToken cancellationToken)
+    {
+        return Ok(await _mediaMigration.GetStats(cancellationToken));
+    }
+
+    /// <summary>
+    /// Starts moving game images from the Steam CDN to Openinary in the background (one run at a time).
+    /// Poll <c>GET media/migration</c> for progress.
+    /// </summary>
+    [HttpPost("media/migration")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(MediaMigrationStatusDto), 202)]
+    [ProducesResponseType(typeof(string), 409)]
+    public IActionResult StartMediaMigration([FromBody] StartMediaMigrationRequestDto request)
+    {
+        try
+        {
+            return Accepted(_mediaMigration.Start(request));
+        }
+        catch (DomainException e)
+        {
+            return Conflict(e.Message);
+        }
+    }
+
+    [HttpGet("media/migration")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(MediaMigrationStatusDto), 200)]
+    public IActionResult GetMediaMigration()
+    {
+        return Ok(_mediaMigration.GetStatus());
+    }
+
+    /// <summary>Stops the running migration after the games in progress (their images are kept).</summary>
+    [HttpDelete("media/migration")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(typeof(string), 404)]
+    public IActionResult CancelMediaMigration()
+    {
+        return _mediaMigration.Cancel() ? NoContent() : NotFound("No media migration is running.");
     }
 
     [HttpPatch("games/{id:int}")]

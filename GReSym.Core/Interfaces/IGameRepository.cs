@@ -19,7 +19,21 @@ public interface IGameRepository : IRepository<Game>
     Task<List<int>> FilterIdsByTagsAsync(IReadOnlyCollection<int> ids, IReadOnlyCollection<int> tagIds);
     Task<IEnumerable<Game>> GetGamesAsync(int page = 1, int pageSize = Constants.Api.DefaultPageSize, List<int>? tagsIds = null);
 
+    // Media migration (Steam CDN → media store, see MediaPaths)
+    /// <summary>
+    /// Ids of games whose header (or, with <paramref name="withScreenshots"/>, a screenshot) is still an external URL,
+    /// most popular first. Only <paramref name="ids"/> when given.
+    /// </summary>
+    Task<List<int>> GetIdsWithExternalImagesAsync(int count, bool withScreenshots, IReadOnlyCollection<int>? ids,
+        IReadOnlyCollection<int> excludeIds, CancellationToken cancellationToken = default);
+    /// <summary>Tracked games with their screenshots, in no particular order.</summary>
+    Task<List<Game>> GetWithScreenshotsByIdsAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+    Task<MediaCounts> CountMediaAsync(CancellationToken cancellationToken = default);
+
     // Для парсинга
     Task<bool> ExistsBySteamAppIdAsync(int steamAppId);
     Task<bool> ExistsByTitleAndDeveloperAsync(string title, string developer);
 }
+
+/// <summary>How many image references are external (Steam CDN) and how many there are in total.</summary>
+public sealed record MediaCounts(int Headers, int ExternalHeaders, int Screenshots, int ExternalScreenshots);
