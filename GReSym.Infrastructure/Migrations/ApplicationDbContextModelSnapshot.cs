@@ -518,6 +518,41 @@ namespace GReSym.Infrastructure.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserGameListEntry", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("GameId")
+                        .HasColumnType("int")
+                        .HasColumnName("game_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("UserId", "GameId");
+
+                    b.HasIndex("GameId")
+                        .HasDatabaseName("IX_user_game_lists_game_id");
+
+                    b.HasIndex("UserId", "Status", "UpdatedAt")
+                        .HasDatabaseName("IX_user_game_lists_user_status_updated");
+
+                    b.ToTable("user_game_lists", (string)null);
+                });
+
             modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserGameRate", b =>
                 {
                     b.Property<int>("UserId")
@@ -761,6 +796,25 @@ namespace GReSym.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Game");
+                });
+
+            modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserGameListEntry", b =>
+                {
+                    b.HasOne("GReSym.Core.Entities.GameInfo.Game", "Game")
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GReSym.Core.Entities.UserInfo.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Game");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("GReSym.Core.Entities.UserInfo.UserGameRate", b =>

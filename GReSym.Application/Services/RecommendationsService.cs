@@ -19,6 +19,7 @@ public class RecommendationsService : IRecommendationsService
 {
     private readonly IUserRecommendationRepository _recommendations;
     private readonly IUserGameRateRepository _rateRepository;
+    private readonly IUserGameListRepository _lists;
     private readonly IGameRepository _gameRepository;
     private readonly IUserSettingsService _settingsService;
     private readonly IRecommendationQueue _queue;
@@ -28,6 +29,7 @@ public class RecommendationsService : IRecommendationsService
     public RecommendationsService(
         IUserRecommendationRepository recommendations,
         IUserGameRateRepository rateRepository,
+        IUserGameListRepository lists,
         IGameRepository gameRepository,
         IUserSettingsService settingsService,
         IRecommendationQueue queue,
@@ -36,6 +38,7 @@ public class RecommendationsService : IRecommendationsService
     {
         _recommendations = recommendations;
         _rateRepository = rateRepository;
+        _lists = lists;
         _gameRepository = gameRepository;
         _settingsService = settingsService;
         _queue = queue;
@@ -52,6 +55,11 @@ public class RecommendationsService : IRecommendationsService
             .Where(r => r.Rating != null || r.Recommend != null)
             .Select(r => new GameRatingSignal(r.GameId, r.Rating, r.Recommend))
             .ToList();
+        // A rating is a stronger signal than a list entry (a rated game normally leaves its list anyway)
+        var ratedIds = signals.Select(s => s.GameId).ToHashSet();
+        var listed = (await _lists.GetAllByUserAsync(userId)).Where(e => !ratedIds.Contains(e.GameId)).ToList();
+        var planned = listed.Where(e => e.Status == GameListStatus.Planned).Select(e => e.GameId).ToList();
+        var rejected = listed.Where(e => e.Status == GameListStatus.Rejected).Select(e => e.GameId).ToList();
         var tuning = ApplyOverrides(await _settingsService.GetTuning(userId), request);
 
         var recommendation = new UserRecommendation
@@ -66,7 +74,8 @@ public class RecommendationsService : IRecommendationsService
         await _recommendations.AddAsync(recommendation);
         await _recommendations.SaveChangesAsync(cancellationToken);
 
-        if (signals.Count == 0)
+        // Rejected games alone give nothing to go on: popular games (without them) right away
+        if (signals.Count == 0 && planned.Count == 0)
         {
             await _resultHandler.CompletePopularAsync(recommendation, null, CancellationToken.None);
         }
@@ -75,7 +84,7 @@ public class RecommendationsService : IRecommendationsService
             try
             {
                 await _queue.EnqueueAsync(
-                    new RecommendationTask(recommendation.Id, signals, request.Limit, tuning), cancellationToken);
+                    new RecommendationTask(recommendation.Id, signals, planned, rejected, request.Limit, tuning), cancellationToken);
             }
             catch (MessageQueueException e)
             {
@@ -132,9 +141,33 @@ public class RecommendationsService : IRecommendationsService
         var game = await _recommendations.GetGameAsync(id, gameId)
                    ?? throw new RecommendationNotFoundException(id, gameId);
 
+        var previous = game.Liked;
         game.Liked = liked;
         recommendation.UpdatedAt = DateTime.UtcNow;
+        await SyncGameListAsync(userId, gameId, previous, liked);
         await _recommendations.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Feedback fills the lists: liked → planned, disliked → rejected. Clearing it removes the game from the list only if it's
+    /// still in the one the old feedback put it in (it may have been moved on the game page since). Games the user rated in
+    /// the library aren't listed. Saved together with the feedback.
+    /// </summary>
+    private async Task SyncGameListAsync(int userId, int gameId, bool? previous, bool? liked)
+    {
+        if (liked is { } value)
+        {
+            var rate = await _rateRepository.GetAsync(userId, gameId);
+            if (rate is { Rating: null, Recommend: null } or null)
+                await GameListsService.SetAsync(_lists, userId, gameId, GameListStatuses.FromFeedback(value));
+            return;
+        }
+
+        if (previous is not { } old)
+            return;
+        var entry = await _lists.GetAsync(userId, gameId);
+        if (entry != null && entry.Status == GameListStatuses.FromFeedback(old))
+            _lists.Remove(entry);
     }
 
     /// <summary>The request's tuning fields win over the stored settings (one-off preview).</summary>

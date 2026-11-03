@@ -12,15 +12,18 @@ namespace GReSym.Application.Services;
 public class RatingsService : IRatingsService
 {
     private readonly IUserGameRateRepository _rateRepository;
+    private readonly IUserGameListRepository _lists;
     private readonly IGameRepository _gameRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public RatingsService(
         IUserGameRateRepository rateRepository,
+        IUserGameListRepository lists,
         IGameRepository gameRepository,
         IUnitOfWork unitOfWork)
     {
         _rateRepository = rateRepository;
+        _lists = lists;
         _gameRepository = gameRepository;
         _unitOfWork = unitOfWork;
     }
@@ -88,7 +91,10 @@ public class RatingsService : IRatingsService
         return ToDto(rate);
     }
 
-    /// <summary>Creates or replaces the user's rating of the game (an entry without rating and recommend is a library entry).</summary>
+    /// <summary>
+    /// Creates or replaces the user's rating of the game (an entry without rating and recommend is a library entry).
+    /// A rating or recommend takes the game out of the planned / rejected lists.
+    /// </summary>
     public async Task<GameRatingDto> RateGame(int userId, int gameId, RateGameRequestDto request)
     {
         if (!await _gameRepository.ExistsAsync(gameId))
@@ -106,6 +112,13 @@ public class RatingsService : IRatingsService
         rate.Recommend = request.Recommend;
         rate.PlayerHours = request.PlayerHours;
         rate.Comment = string.IsNullOrWhiteSpace(request.Comment) ? null : request.Comment.Trim();
+
+        if (rate.Rating != null || rate.Recommend != null)
+        {
+            var listed = await _lists.GetAsync(userId, gameId);
+            if (listed != null)
+                _lists.Remove(listed);
+        }
 
         await _unitOfWork.SaveChangesAsync();
 

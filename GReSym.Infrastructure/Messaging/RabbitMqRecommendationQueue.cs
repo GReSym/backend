@@ -24,10 +24,12 @@ public sealed class RabbitMqRecommendationQueue : IRecommendationQueue
     public async Task EnqueueAsync(RecommendationTask task, CancellationToken cancellationToken = default)
     {
         // The whole input travels in the message: the ML service doesn't read users_games_rates.
-        // Same fields as RecommendationsRequest in ml/src/ml/api.py
+        // Same fields as RecommendationsRequest in ml/src/ml/personal.py
         var message = new RecommendMessage(
             task.RecommendationId,
             task.Ratings.Select(r => new RatingItem(r.GameId, r.Rating, r.Recommend)).ToList(),
+            task.Planned.ToList(),
+            task.Rejected.ToList(),
             task.Limit,
             task.Tuning.Mainstream,
             task.Tuning.DislikeMode.ToName(),
@@ -35,11 +37,13 @@ public sealed class RabbitMqRecommendationQueue : IRecommendationQueue
 
         await _publisher.PublishAsync(_settings.RecommendationRoutingKey, [message], cancellationToken);
 
-        _logger.LogInformation("Queued recommendation {RecommendationId} ({Ratings} ratings)",
-            task.RecommendationId, task.Ratings.Count);
+        _logger.LogInformation(
+            "Queued recommendation {RecommendationId} ({Ratings} ratings, {Planned} planned, {Rejected} rejected)",
+            task.RecommendationId, task.Ratings.Count, task.Planned.Count, task.Rejected.Count);
     }
 
     private record RatingItem(int GameId, int? Rating, bool? Recommend);
     private record RecommendMessage(
-        int RecommendationId, List<RatingItem> Ratings, int Limit, int Mainstream, string DislikeMode, int DislikeStrength);
+        int RecommendationId, List<RatingItem> Ratings, List<int> Planned, List<int> Rejected, int Limit, int Mainstream,
+        string DislikeMode, int DislikeStrength);
 }

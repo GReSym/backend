@@ -14,6 +14,7 @@ public class RecommendationResultHandler : IRecommendationResultHandler
 {
     private readonly IUserRecommendationRepository _recommendations;
     private readonly IUserGameRateRepository _rateRepository;
+    private readonly IUserGameListRepository _lists;
     private readonly IGameRepository _gameRepository;
     private readonly RecommendationSettings _settings;
     private readonly ILogger<RecommendationResultHandler> _logger;
@@ -21,12 +22,14 @@ public class RecommendationResultHandler : IRecommendationResultHandler
     public RecommendationResultHandler(
         IUserRecommendationRepository recommendations,
         IUserGameRateRepository rateRepository,
+        IUserGameListRepository lists,
         IGameRepository gameRepository,
         IOptions<RecommendationSettings> settings,
         ILogger<RecommendationResultHandler> logger)
     {
         _recommendations = recommendations;
         _rateRepository = rateRepository;
+        _lists = lists;
         _gameRepository = gameRepository;
         _settings = settings.Value;
         _logger = logger;
@@ -75,13 +78,16 @@ public class RecommendationResultHandler : IRecommendationResultHandler
             games.Count);
     }
 
-    /// <summary>Completes a tracked recommendation with popular games the user hasn't rated.</summary>
+    /// <summary>Completes a tracked recommendation with popular games the user hasn't rated or listed (planned / rejected).</summary>
     /// <param name="error">Why the personal games aren't available, if it's a failure.</param>
     public async Task CompletePopularAsync(UserRecommendation recommendation, string? error,
         CancellationToken cancellationToken = default)
     {
-        var ratedIds = (await _rateRepository.GetAllByUserAsync(recommendation.UserId)).Select(r => r.GameId).ToList();
-        var popular = await _gameRepository.GetPopularGamesAsync(1, recommendation.GameLimit, excludeIds: ratedIds);
+        var excludeIds = (await _rateRepository.GetAllByUserAsync(recommendation.UserId)).Select(r => r.GameId)
+            .Concat((await _lists.GetAllByUserAsync(recommendation.UserId)).Select(e => e.GameId))
+            .Distinct()
+            .ToList();
+        var popular = await _gameRepository.GetPopularGamesAsync(1, recommendation.GameLimit, excludeIds: excludeIds);
         var games = popular.Select(g => (g.Id, (double?)null)).ToList();
 
         await CompleteAsync(recommendation, RecommendationSource.Popular, games, null, error, DateTime.UtcNow,
