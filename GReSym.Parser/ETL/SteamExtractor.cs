@@ -253,10 +253,20 @@ public class SteamExtractor : IDataExtractor<Game>
             game.ReleaseDate = new DateOnly(1970, 1, 1);
         }
 
+        // Steam answers some appids (old/alternate ids) with another app's data: 659 → Portal 2 (620).
+        // Store the canonical id from the payload, otherwise the alias gets saved as a second copy of that game.
+        var requestedAppId = int.Parse(steamAppId);
+        var canonicalAppId = gameData["steam_appid"]?.Value<int>() ?? requestedAppId;
+        if (canonicalAppId != requestedAppId)
+        {
+            _logger.LogWarning("AppID {Requested} is an alias of {Canonical} ({Title}), storing {Canonical}",
+                requestedAppId, canonicalAppId, game.Title, canonicalAppId);
+        }
+
         // Steam Source Information
         game.SteamSource = new SteamSource
         {
-            SteamAppId = int.Parse(steamAppId),
+            SteamAppId = canonicalAppId,
             Price = ExtractPrice(gameData),
             RecommendationsCount = gameData["recommendations"]?["total"]?.Value<int>(),
             ReleaseDate = game.ReleaseDate,

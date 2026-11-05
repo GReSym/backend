@@ -10,6 +10,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using GReSym.Parser.Enums;
+using GReSym.Core.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GReSym.Parser.UI;
 
@@ -24,6 +26,7 @@ public class SteamGamesTab : IParserTab
     private Button _startButton, _pauseButton, _resumeButton, _stopButton;
     private ProgressBar _progressBar;
     private RadioButton _fullModeRadio, _incrementalModeRadio;
+    private CheckButton _onlyNewCheck;
     private Entry _batchSizeEntry, _threadsCountEntry;
     private Entry _steamApiEntry, _minAppIdEntry, _maxAppIdEntry;
     private ComboBoxText _checkpointsComboBox;
@@ -70,6 +73,7 @@ public class SteamGamesTab : IParserTab
 
         _minAppIdEntry = (Entry)_builder.GetObject("min_steam_app_id");
         _maxAppIdEntry = (Entry)_builder.GetObject("max_steam_app_id");
+        _onlyNewCheck = (CheckButton)_builder.GetObject("only_new_games_checkbutton");
 
         _checkpointsComboBox = (ComboBoxText)_builder.GetObject("checkpoints_combobox");
         _checkpointInfo = (Label)_builder.GetObject("checkpoint_info");
@@ -114,6 +118,30 @@ public class SteamGamesTab : IParserTab
             return;
         }
         LogMessage($"Отфильтровано {appIds.Count} игр");
+
+        if (_onlyNewCheck.Active)
+        {
+            try
+            {
+                // Own scope: DbContext isn't thread-safe and the engine creates its own per batch
+                using var scope = _serviceProvider.CreateScope();
+                var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                var existing = await unitOfWork.Games.GetExistingSteamAppIdsAsync(minAppId, maxAppId);
+                appIds = appIds.Where(id => !existing.Contains(int.Parse(id))).ToList();
+                LogMessage($"Уже в БД: {existing.Count}, новых к парсингу: {appIds.Count}");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Не удалось получить список игр из БД: {ex.Message}");
+                return;
+            }
+
+            if (appIds.Count == 0)
+            {
+                LogMessage("Новых игр нет");
+                return;
+            }
+        }
 
         string checkpoint = _checkpointsComboBox.ActiveText;
         if (string.IsNullOrEmpty(checkpoint))

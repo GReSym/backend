@@ -1,5 +1,6 @@
 using GReSym.Core.Common;
 using GReSym.Core.Entities.GameInfo;
+using GReSym.Core.Entities.SourceData;
 using GReSym.Core.Interfaces;
 using GReSym.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,7 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
     public async Task<Game?> GetByTitleAsync(string title)
     {
         return await _dbSet
+            .Include(g => g.SteamSource)
             .FirstOrDefaultAsync(g => g.Title == title);
     }
 
@@ -183,6 +185,16 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
         return await _dbSet
             .Include(g => g.SteamSource)
             .AnyAsync(g => g.SteamSource != null && g.SteamSource.SteamAppId == steamAppId);
+    }
+
+    public async Task<HashSet<int>> GetExistingSteamAppIdsAsync(int minAppId, int maxAppId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Set<SteamSource>()
+            .AsNoTracking()
+            .Where(s => s.SteamAppId >= minAppId && s.SteamAppId <= maxAppId)
+            .Select(s => s.SteamAppId)
+            .ToHashSetAsync(cancellationToken);
     }
 
     public async Task<bool> ExistsByTitleAndDeveloperAsync(string title, string developer)

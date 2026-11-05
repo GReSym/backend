@@ -277,6 +277,7 @@ resolve_db_cmd() {
 # protocol=tcp: иначе host=localhost означает unix-сокет, а у MariaDB в Docker его на хосте нет
 # Удаляется при выходе из скрипта
 create_db_defaults_file() {
+    [[ -n "${DB_DEFAULTS_FILE:-}" && -f "$DB_DEFAULTS_FILE" ]] && return 0  # второй resolve_db_cmd в той же команде
     DB_DEFAULTS_FILE=$(mktemp)
     chmod 600 "$DB_DEFAULTS_FILE"
     trap 'rm -f "$DB_DEFAULTS_FILE"' EXIT
@@ -382,6 +383,268 @@ database_restore() {
     fi
 }
 
+# ---------------- Частичный перенос игр (dump-games / restore-games) ----------------
+# Только данные игр: games, steam_source, game_tags, screenshots, reviews (Steam) по диапазону games.id + вся tags.
+# Пользовательские таблицы не трогаются. Подробности — docs/docker.md
+
+GAME_TABLES=(games steam_source game_tags screenshots reviews tags)
+GAMES_DUMP_HEADER="-- gresym-games-dump"
+
+# --from N --to M → RANGE_FROM/RANGE_TO, остальные аргументы → RANGE_REST
+parse_range_args() {
+    RANGE_FROM=1
+    RANGE_TO=2147483647
+    RANGE_REST=()
+    while (( $# )); do
+        case "$1" in
+            --from) RANGE_FROM="${2:-}"; shift; shift ;;
+            --to)   RANGE_TO="${2:-}"; shift; shift ;;
+            *)      RANGE_REST+=("$1"); shift ;;
+        esac
+    done
+    if ! [[ "$RANGE_FROM" =~ ^[0-9]+$ && "$RANGE_TO" =~ ^[0-9]+$ ]] || (( RANGE_FROM > RANGE_TO )); then
+        echo "Ошибка: --from/--to должны быть числами, from ≤ to (получено: ${RANGE_FROM:-?}..${RANGE_TO:-?})"
+        return 1
+    fi
+}
+
+database_dump_games() {
+    parse_range_args "$@" || exit 1
+    local target="${RANGE_REST[0]:-}"
+    local compressor
+    check_config
+    load_config
+
+    if [[ -z "$target" ]]; then
+        local ext="sql.gz"
+        command -v zstd >/dev/null && ext="sql.zst"
+        mkdir -p "$DUMPS_DIR"
+        target="$DUMPS_DIR/games-${RANGE_FROM}-${RANGE_TO}-$(date +%Y%m%dT%H%M).$ext"
+    fi
+    compressor=$(compression_for "$target") || exit 1
+    if [[ -e "$target" ]]; then
+        echo "Ошибка: $target уже существует"
+        exit 1
+    fi
+
+    resolve_db_cmd mariadb mariadb mysql || exit 1
+    local count
+    count=$("${DB_CMD[@]}" -N -B -e \
+        "SELECT COUNT(*) FROM \`$DATABASE\`.games WHERE id BETWEEN $RANGE_FROM AND $RANGE_TO;") || exit 1
+    if (( count == 0 )); then
+        echo "В $DATABASE нет игр с id в диапазоне $RANGE_FROM..$RANGE_TO"
+        exit 1
+    fi
+
+    resolve_db_cmd mariadb-dump mariadb-dump mysqldump || exit 1
+    local compress_cmd=("$compressor")
+    case "$compressor" in
+        zstd) compress_cmd=(zstd -q -T0 -19) ;;
+        gzip) compress_cmd=(gzip -9) ;;
+    esac
+    # Без CREATE TABLE: при восстановлении используется схема целевой БД. --complete-insert: у каждого INSERT
+    # явный список колонок, так что расхождение схем (не применена миграция) даёт ошибку, а не тихую потерю данных
+    local opts=(--no-create-info --complete-insert --single-transaction --quick --skip-triggers)
+    echo "Дамп игр $RANGE_FROM..$RANGE_TO ($count шт.) из $DATABASE ($SERVER:$PORT) → $target"
+    if {
+        echo "$GAMES_DUMP_HEADER from=$RANGE_FROM to=$RANGE_TO games=$count created=$(date -Iseconds)"
+        "${DB_CMD[@]}" "${opts[@]}" --where="id BETWEEN $RANGE_FROM AND $RANGE_TO" "$DATABASE" games &&
+        "${DB_CMD[@]}" "${opts[@]}" --where="game_id BETWEEN $RANGE_FROM AND $RANGE_TO" \
+            "$DATABASE" steam_source game_tags screenshots reviews &&
+        "${DB_CMD[@]}" "${opts[@]}" "$DATABASE" tags
+    } | "${compress_cmd[@]}" > "$target"; then
+        echo "Готово: $target ($(du -h "$target" | cut -f1))"
+    else
+        rm -f "$target"
+        echo "Ошибка при создании дампа"
+        exit 1
+    fi
+}
+
+# Колонки таблицы в целевой БД через запятую, кроме перечисленных: table_columns <таблица> [исключить...]
+table_columns() {
+    local table="$1"
+    shift
+    local exclude=" $* " column result=()
+    while read -r column; do
+        [[ "$exclude" == *" $column "* ]] || result+=("\`$column\`")
+    done < <("${DB_CMD[@]}" -N -B -e "SELECT column_name FROM information_schema.columns
+        WHERE table_schema = '$DATABASE' AND table_name = '$table' ORDER BY ordinal_position;")
+    local IFS=,
+    echo "${result[*]}"
+}
+
+# "`a` = VALUES(`a`), ..." для ON DUPLICATE KEY UPDATE
+values_assignments() {
+    local column result=() columns
+    IFS=, read -r -a columns <<< "$1"
+    for column in "${columns[@]}"; do
+        result+=("$column = VALUES($column)")
+    done
+    local IFS=,
+    echo "${result[*]}"
+}
+
+# EXIT-trap restore-games: убрать промежуточную БД и временный option-файл
+drop_games_import() {
+    "${DB_CMD[@]}" -N -B -e "DROP DATABASE IF EXISTS \`$1\`;" >/dev/null 2>&1
+    rm -f "${DB_DEFAULTS_FILE:-}"
+}
+
+database_restore_games() {
+    local source="$1"
+    local assume_yes="$2"
+    local decompressor
+    if [[ -z "$source" ]]; then
+        echo "Использование: ./manage.sh database restore-games <файл.sql[.gz|.zst]> [--yes]"
+        exit 1
+    fi
+    [[ -f "$source" ]] || { echo "Ошибка: файл $source не найден"; exit 1; }
+    decompressor=$(compression_for "$source") || exit 1
+    local decompress_cmd=(cat "$source")
+    case "$decompressor" in
+        zstd) decompress_cmd=(zstd -q -dc "$source") ;;
+        gzip) decompress_cmd=(gzip -dc "$source") ;;
+    esac
+    local header
+    header=$("${decompress_cmd[@]}" 2>/dev/null | head -n 1)
+    if [[ "$header" != "$GAMES_DUMP_HEADER"* ]]; then
+        echo "Ошибка: $source — не дамп dump-games (полный дамп восстанавливается через database restore)"
+        exit 1
+    fi
+    echo "Дамп: ${header#-- }"
+
+    check_config
+    load_config
+    resolve_db_cmd mariadb mariadb mysql || exit 1
+    local main="\`$DATABASE\`"
+    local stg_name="${DATABASE}_games_import"
+    local stg="\`$stg_name\`"
+    q() { "${DB_CMD[@]}" -N -B -e "$1"; }
+
+    local has_games
+    has_games=$(q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$DATABASE' AND table_name = 'games';") || exit 1
+    if [[ "$has_games" != "1" ]]; then
+        echo "Ошибка: в $DATABASE нет таблицы games (сначала полный restore или ./manage.sh database update)"
+        exit 1
+    fi
+
+    # Промежуточная БД: таблицы той же структуры (CREATE TABLE LIKE копирует индексы, но не внешние ключи)
+    trap "drop_games_import '$stg_name'" EXIT
+    local create="DROP DATABASE IF EXISTS $stg; CREATE DATABASE $stg CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+    local table
+    for table in "${GAME_TABLES[@]}"; do
+        create+=" CREATE TABLE $stg.\`$table\` LIKE $main.\`$table\`;"
+    done
+    if ! q "$create"; then
+        echo "Ошибка: не удалось создать промежуточную базу $stg_name (нужны права CREATE/DROP у пользователя $DB_USER)"
+        exit 1
+    fi
+    echo "Загружаем дамп во временную базу $stg_name..."
+    if ! "${decompress_cmd[@]}" | "${DB_CMD[@]}" "$stg_name"; then
+        echo "Ошибка при загрузке дампа (схема целевой БД отличается? примените миграции: ./manage.sh database update)"
+        exit 1
+    fi
+
+    # Конфликты: в этой БД под тем же id другая игра / чужой steam_app_id / чужие id скриншотов и отзывов
+    local imported="SELECT id FROM $stg.games"
+    local conflicts
+    conflicts=$(q "
+        SELECT CONCAT('game ', g.id, ': здесь «', m.title, '» (appid ', IFNULL(ms.steam_app_id, '-'), '), в дампе «', g.title,
+                      '» (appid ', IFNULL(ss.steam_app_id, '-'), ')')
+          FROM $stg.games g JOIN $main.games m ON m.id = g.id
+          LEFT JOIN $stg.steam_source ss ON ss.game_id = g.id LEFT JOIN $main.steam_source ms ON ms.game_id = g.id
+         WHERE m.title <> g.title AND NOT (ms.steam_app_id <=> ss.steam_app_id)
+        UNION ALL
+        SELECT CONCAT('steam_app_id ', ss.steam_app_id, ': в дампе у game ', ss.game_id, ', здесь у game ', ms.game_id)
+          FROM $stg.steam_source ss JOIN $main.steam_source ms ON ms.steam_app_id = ss.steam_app_id
+         WHERE ms.game_id <> ss.game_id AND ms.game_id NOT IN ($imported)
+        UNION ALL
+        SELECT CONCAT('screenshot ', s.id, ': в дампе у game ', s.game_id, ', здесь у game ', m.game_id)
+          FROM $stg.screenshots s JOIN $main.screenshots m ON m.id = s.id
+         WHERE m.game_id <> s.game_id AND m.game_id NOT IN ($imported)
+        UNION ALL
+        SELECT CONCAT('review ', r.id, ' (', IFNULL(r.external_id, '-'), '): в дампе у game ', r.game_id, ', здесь у game ', IFNULL(m.game_id, 'NULL'))
+          FROM $stg.reviews r JOIN $main.reviews m ON m.id = r.id
+         WHERE NOT (m.game_id <=> r.game_id) AND (m.game_id IS NULL OR m.game_id NOT IN ($imported))
+        UNION ALL
+        SELECT CONCAT('review ', r.id, ' (', r.external_id, '): в дампе у game ', r.game_id, ', здесь у game ', IFNULL(m.game_id, 'NULL'))
+          FROM $stg.reviews r JOIN $main.reviews m ON m.external_id = r.external_id
+         WHERE NOT (m.game_id <=> r.game_id) AND (m.game_id IS NULL OR m.game_id NOT IN ($imported))
+        LIMIT 50;") || exit 1
+    if [[ -n "$conflicts" ]]; then
+        echo "Ошибка: дамп конфликтует с данными $DATABASE (база не от того же источника?). Ничего не изменено:"
+        echo "$conflicts" | sed 's/^/  /'
+        exit 1
+    fi
+
+    local summary
+    summary=$(q "
+        SELECT COUNT(*), IFNULL(MIN(id), 0), IFNULL(MAX(id), 0),
+               IFNULL(SUM(id IN (SELECT id FROM $main.games)), 0),
+               IFNULL(SUM(header_image_url NOT LIKE 'http%' AND header_image_url <> ''), 0),
+               (SELECT COUNT(*) FROM $stg.screenshots), (SELECT COUNT(*) FROM $stg.reviews),
+               (SELECT COUNT(*) FROM $stg.tags s WHERE NOT EXISTS (SELECT 1 FROM $main.tags t WHERE t.name = s.name))
+          FROM $stg.games;") || exit 1
+    local total min_id max_id existing media_paths screenshots reviews new_tags
+    read -r total min_id max_id existing media_paths screenshots reviews new_tags <<< "$summary"
+    if (( total == 0 )); then
+        echo "В дампе нет игр, восстанавливать нечего"
+        exit 1
+    fi
+    echo "Игр в дампе: $total (id $min_id..$max_id): новых $((total - existing)), обновится $existing"
+    echo "Скриншотов: $screenshots, отзывов: $reviews, новых тегов: $new_tags. Пользовательские таблицы не меняются"
+    if (( media_paths > 0 )); then
+        echo "Внимание: у $media_paths игр в дампе обложка — путь Openinary, а не URL Steam: здесь эти файлы могут отсутствовать"
+    fi
+    if [[ "$assume_yes" != "--yes" ]]; then
+        read -r -p "Применить к $DATABASE ($SERVER:$PORT)? [y/N] " answer
+        [[ "$answer" =~ ^[YyДд]$ ]] || { echo "Отменено"; exit 1; }
+    fi
+
+    local games_cols games_update ss_cols shot_cols shot_update review_cols
+    games_cols=$(table_columns games)
+    # Путь Openinary (уже перенесённая обложка) остаётся, как в GameLoader; created_at — как был
+    games_update="$main.games.header_image_url = IF($main.games.header_image_url <> '' AND $main.games.header_image_url NOT LIKE 'http%',
+        $main.games.header_image_url, VALUES(header_image_url)), $(values_assignments "$(table_columns games id created_at header_image_url)")"
+    ss_cols=$(table_columns steam_source id)
+    shot_cols=$(table_columns screenshots)
+    shot_update="$main.screenshots.url = IF($main.screenshots.url NOT LIKE 'http%', $main.screenshots.url, VALUES(url)),
+        $(values_assignments "$(table_columns screenshots id url)")"
+    review_cols=$(table_columns reviews)
+
+    # Одна транзакция: клиент останавливается на первой ошибке, соединение закрывается, и всё откатывается.
+    # games — только upsert (DELETE/REPLACE каскадом удалил бы оценки, списки и рекомендации пользователей)
+    echo "Применяем..."
+    if ! "${DB_CMD[@]}" "$DATABASE" <<SQL
+START TRANSACTION;
+INSERT INTO $main.tags (name)
+    SELECT s.name FROM $stg.tags s WHERE NOT EXISTS (SELECT 1 FROM $main.tags t WHERE t.name = s.name);
+INSERT INTO $main.games ($games_cols) SELECT $games_cols FROM $stg.games
+    ON DUPLICATE KEY UPDATE $games_update;
+DELETE m FROM $main.steam_source m JOIN $stg.games g ON g.id = m.game_id;
+INSERT INTO $main.steam_source ($ss_cols) SELECT $ss_cols FROM $stg.steam_source;
+DELETE m FROM $main.game_tags m JOIN $stg.games g ON g.id = m.game_id;
+INSERT INTO $main.game_tags (game_id, tag_id)
+    SELECT DISTINCT gt.game_id, t.id FROM $stg.game_tags gt
+      JOIN $stg.tags st ON st.id = gt.tag_id JOIN $main.tags t ON t.name = st.name;
+INSERT INTO $main.screenshots ($shot_cols) SELECT $shot_cols FROM $stg.screenshots
+    ON DUPLICATE KEY UPDATE $shot_update;
+DELETE m FROM $main.screenshots m JOIN $stg.games g ON g.id = m.game_id
+    LEFT JOIN $stg.screenshots s ON s.id = m.id WHERE s.id IS NULL;
+DELETE m FROM $main.reviews m JOIN $stg.games g ON g.id = m.game_id;
+INSERT INTO $main.reviews ($review_cols) SELECT $review_cols FROM $stg.reviews;
+COMMIT;
+SQL
+    then
+        echo "Ошибка при применении, изменения откатены"
+        exit 1
+    fi
+    echo "Готово: игры $min_id..$max_id в $DATABASE"
+    echo "Дальше: векторы — uv run ml import <файл.npz>, поиск — uv run ml index-text --from $min_id --to $max_id"
+    echo "(deploy/manage.sh restore games <папка> делает всё сразу)"
+}
+
 # Основная логика скрипта
 case "${1:-}" in
     "setup")
@@ -438,8 +701,14 @@ case "${1:-}" in
             "restore")
                 database_restore "${3:-}" "${4:-}"
                 ;;
+            "dump-games")
+                database_dump_games "${@:3}"
+                ;;
+            "restore-games")
+                database_restore_games "${3:-}" "${4:-}"
+                ;;
             *)
-                echo "Использование: ./manage.sh database {migrate|update|dump|restore}"
+                echo "Использование: ./manage.sh database {migrate|update|dump|restore|dump-games|restore-games}"
                 exit 1
                 ;;
         esac
@@ -455,6 +724,9 @@ case "${1:-}" in
         echo "  database update   — применить миграции"
         echo "  database dump     — дамп БД (по умолчанию в dumps/, .sql.zst), опционально можно задать путь (.sql/.sql.gz/.sql.zst)"
         echo "  database restore  — восстановить БД из дампа: <файл> [--yes]"
+        echo "  database dump-games    — дамп только игр (games, steam_source, game_tags, screenshots, reviews + все tags):"
+        echo "                           [--from N] [--to M] [путь] — диапазон games.id; не запускать во время парсинга"
+        echo "  database restore-games — влить такой дамп: <файл> [--yes]; игры обновляются/добавляются, пользователи не трогаются"
         exit 1
         ;;
 esac

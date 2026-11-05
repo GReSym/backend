@@ -32,6 +32,8 @@ public interface IGameRepository : IRepository<Game>
 
     // Для парсинга
     Task<bool> ExistsBySteamAppIdAsync(int steamAppId);
+    /// <summary>Steam appids in [<paramref name="minAppId"/>, <paramref name="maxAppId"/>] that already exist in the DB (one range query).</summary>
+    Task<HashSet<int>> GetExistingSteamAppIdsAsync(int minAppId, int maxAppId, CancellationToken cancellationToken = default);
     Task<bool> ExistsByTitleAndDeveloperAsync(string title, string developer);
 }
 

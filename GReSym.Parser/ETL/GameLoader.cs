@@ -123,9 +123,18 @@ public class GameLoader : IDataLoader<Game>
         if (existingGame == null)
         {
             // Проверяем по названию и разработчику
+            // (only for games without a Steam appid, e.g. added by hand: a game with another appid is
+            // another Steam app, e.g. two "Money Maker" by the same developer)
             existingGame = await _unitOfWork.Games.GetByTitleAsync(game.Title);
-            if (existingGame != null && existingGame.Developer != game.Developer)
+            if (existingGame != null &&
+                (existingGame.Developer != game.Developer || existingGame.SteamSource != null))
             {
+                if (existingGame.Developer == game.Developer)
+                {
+                    _logger.LogWarning(
+                        "Игра {Title} (AppID {AppId}) совпадает по названию и разработчику с игрой {GameId} (AppID {ExistingAppId}), добавляется как отдельная",
+                        game.Title, game.SteamSource?.SteamAppId, existingGame.Id, existingGame.SteamSource!.SteamAppId);
+                }
                 existingGame = null;
             }
         }
