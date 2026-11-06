@@ -4,6 +4,8 @@ using GReSym.Core.Common;
 using GReSym.Core.Exceptions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 
 namespace GReSym.API.Controllers;
 
@@ -26,11 +28,49 @@ public class EvaluationController : ControllerBase
     /// <summary>Imports the file of ml/scripts/collect_steam_users.py. Users already present are skipped.</summary>
     [HttpPost("steam-users/import")]
     [RequestSizeLimit(ImportSizeLimit)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ImportSizeLimit)]
     [Produces("application/json")]
     [ProducesResponseType(typeof(ImportSteamUsersResponseDto), 200)]
     [ProducesResponseType(typeof(string), 400)]
-    public async Task<IActionResult> ImportSteamUsers([FromBody] ImportSteamUsersRequestDto request)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> ImportSteamUsers(IFormFile? file)
     {
+        if (file == null || file.Length == 0)
+            return BadRequest("A non-empty JSON file is required in the 'file' field.");
+
+        ImportSteamUsersRequestDto? request;
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            request = await JsonSerializer.DeserializeAsync<ImportSteamUsersRequestDto>(stream,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web), HttpContext.RequestAborted);
+        }
+        catch (JsonException)
+        {
+            return BadRequest("The uploaded file must contain valid Steam users JSON.");
+        }
+
+        if (request == null)
+            return BadRequest("The uploaded file must contain a Steam users JSON object.");
+
+        var validationResults = new List<ValidationResult>();
+        if (!Validator.TryValidateObject(request, new ValidationContext(request), validationResults, validateAllProperties: true))
+            return BadRequest(validationResults.Select(result => result.ErrorMessage).ToArray());
+
+        foreach (var user in request.Users)
+        {
+            validationResults.Clear();
+            if (!Validator.TryValidateObject(user, new ValidationContext(user), validationResults, validateAllProperties: true))
+                return BadRequest(validationResults.Select(result => result.ErrorMessage).ToArray());
+
+            foreach (var game in user.Games)
+            {
+                validationResults.Clear();
+                if (!Validator.TryValidateObject(game, new ValidationContext(game), validationResults, validateAllProperties: true))
+                    return BadRequest(validationResults.Select(result => result.ErrorMessage).ToArray());
+            }
+        }
+
         try
         {
             var result = await _evaluationService.ImportSteamUsers(request);

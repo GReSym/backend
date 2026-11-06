@@ -14,6 +14,9 @@ public interface IEvaluationRepository
 
     Task AddSteamUsersAsync(IEnumerable<SteamUser> users);
 
+    /// <summary>Add and persist one bounded batch; used to keep large imports within database command timeouts.</summary>
+    Task SaveSteamUsersBatchAsync(IReadOnlyCollection<SteamUser> users);
+
     Task<SteamUsersSummary> GetSteamUsersSummaryAsync();
 
     Task AddRunAsync(EvaluationRun run);

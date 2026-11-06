@@ -52,6 +52,13 @@ public class EvaluationRepository : IEvaluationRepository
         await _context.SteamUsers.AddRangeAsync(users);
     }
 
+    public async Task SaveSteamUsersBatchAsync(IReadOnlyCollection<SteamUser> users)
+    {
+        await _context.SteamUsers.AddRangeAsync(users);
+        await _context.SaveChangesAsync();
+        _context.ChangeTracker.Clear();
+    }
+
     public async Task<SteamUsersSummary> GetSteamUsersSummaryAsync()
     {
         var users = await _context.SteamUsers.CountAsync();

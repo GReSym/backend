@@ -13,6 +13,7 @@ namespace GReSym.Application.Services;
 public class EvaluationService : IEvaluationService
 {
     private const int SupportedImportVersion = 1;
+    private const int ImportBatchSize = 25;
     private static readonly string[] TestSelections = ["top", "random-liked"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -79,9 +80,8 @@ public class EvaluationService : IEvaluationService
             });
         }
 
-        // One SaveChanges: all users or none
-        await _evaluation.AddSteamUsersAsync(entities);
-        await _evaluation.SaveChangesAsync();
+        foreach (var batch in entities.Chunk(ImportBatchSize))
+            await _evaluation.SaveSteamUsersBatchAsync(batch);
 
         result.Imported = entities.Count;
         _logger.LogInformation("Imported {Imported} Steam users ({Skipped} already present), {Matched} games matched, {Unmatched} not in the catalogue",
