@@ -274,7 +274,7 @@
           </packing>
         </child>
         <child>
-          <!-- n-columns=3 n-rows=3 -->
+          <!-- n-columns=4 n-rows=3 -->
           <object class="GtkGrid" id="steam_reviews_grid">
             <property name="visible">True</property>
             <property name="can-focus">False</property>
@@ -403,6 +403,20 @@
                         <property name="expand">False</property>
                         <property name="fill">True</property>
                         <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkCheckButton" id="skip_games_with_reviews_checkbutton">
+                        <property name="label" translatable="yes">Пропустить игры у которых уже есть отзывы</property>
+                        <property name="visible">True</property>
+                        <property name="can-focus">True</property>
+                        <property name="tooltip-text" translatable="yes">Парсить отзывы только для игр, у которых ещё нет отзывов в БД</property>
+                        <property name="draw-indicator">True</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">2</property>
                       </packing>
                     </child>
                     <child>

@@ -6,6 +6,8 @@ using GReSym.Parser.ETL;
 using GReSym.Parser.Enums;
 using GReSym.Parser.Interfaces;
 using GReSym.Parser.Models;
+using GReSym.Core.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Gtk;
 
 namespace GReSym.Parser.UI;
@@ -23,6 +25,7 @@ public class SteamReviewsTab : IParserTab
     private RadioButton _fullModeRadio, _incrementalModeRadio;
     private Entry _batchSizeEntry, _threadsCountEntry;
     private Entry _steamApiEntry, _minAppIdEntry, _maxAppIdEntry;
+    private CheckButton _skipGamesWithReviewsCheck;
     private ComboBoxText _checkpointsComboBox;
     private Label _checkpointInfo;
 
@@ -62,6 +65,7 @@ public class SteamReviewsTab : IParserTab
 
         _minAppIdEntry = (Entry)_builder.GetObject("min_game_id");
         _maxAppIdEntry = (Entry)_builder.GetObject("max_game_id");
+        _skipGamesWithReviewsCheck = (CheckButton)_builder.GetObject("skip_games_with_reviews_checkbutton");
 
         _checkpointsComboBox = (ComboBoxText)_builder.GetObject("checkpoints_combobox");
         _checkpointInfo = (Label)_builder.GetObject("checkpoint_info");
@@ -90,6 +94,29 @@ public class SteamReviewsTab : IParserTab
         int maxId = int.TryParse(_maxAppIdEntry.Text, out var ma) ? ma : 500;
 
         var ids = Enumerable.Range(minId, maxId - minId + 1).Select(x => x.ToString()).ToList();
+
+        if (_skipGamesWithReviewsCheck.Active)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                var withReviews = await unitOfWork.Games.GetGameIdsWithReviewsAsync(minId, maxId);
+                ids = ids.Where(id => !withReviews.Contains(int.Parse(id))).ToList();
+                LogMessage($"Уже с отзывами: {withReviews.Count}, к парсингу: {ids.Count}");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Не удалось проверить отзывы в БД: {ex.Message}");
+                return;
+            }
+
+            if (ids.Count == 0)
+            {
+                LogMessage("Все игры в диапазоне уже имеют отзывы");
+                return;
+            }
+        }
 
         string checkpoint = _checkpointsComboBox.ActiveText;
         if (string.IsNullOrEmpty(checkpoint))

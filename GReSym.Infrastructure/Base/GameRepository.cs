@@ -197,6 +197,17 @@ public class GameRepository : RepositoryBase<Game>, IGameRepository
             .ToHashSetAsync(cancellationToken);
     }
 
+    public async Task<HashSet<int>> GetGameIdsWithReviewsAsync(int minGameId, int maxGameId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Set<GReSym.Core.Entities.Feedback.Review>()
+            .AsNoTracking()
+            .Join(_dbSet.AsNoTracking(), review => review.GameId, game => game.Id, (review, game) => game.Id)
+            .Where(gameId => gameId >= minGameId && gameId <= maxGameId)
+            .Distinct()
+            .ToHashSetAsync(cancellationToken);
+    }
+
     public async Task<bool> ExistsByTitleAndDeveloperAsync(string title, string developer)
     {
         return await _dbSet

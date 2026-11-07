@@ -34,6 +34,8 @@ public interface IGameRepository : IRepository<Game>
     Task<bool> ExistsBySteamAppIdAsync(int steamAppId);
     /// <summary>Steam appids in [<paramref name="minAppId"/>, <paramref name="maxAppId"/>] that already exist in the DB (one range query).</summary>
     Task<HashSet<int>> GetExistingSteamAppIdsAsync(int minAppId, int maxAppId, CancellationToken cancellationToken = default);
+    /// <summary>Database game ids in the given range whose games already have at least one review.</summary>
+    Task<HashSet<int>> GetGameIdsWithReviewsAsync(int minGameId, int maxGameId, CancellationToken cancellationToken = default);
     Task<bool> ExistsByTitleAndDeveloperAsync(string title, string developer);
 }
 

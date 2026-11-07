@@ -71,7 +71,6 @@ public class SteamReviewExtractor : IDataExtractor<Review>
     private const string BaseUrl =
         "https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/";
 
-    private const string Lang = "russian";
     private const int ReviewsPerType = 5;
     private const int PageSize = 20;
 
@@ -217,7 +216,8 @@ public class SteamReviewExtractor : IDataExtractor<Review>
         {
             var url =
                 $"{BaseUrl}?appid={appId}" +
-                $"&languages[0]={Lang}" +
+                $"&languages[0]=russian" +
+                $"&languages[1]=english" +
                 $"&num_per_page={PageSize}" + // больше страницы
                 $"&purchase_type=all" +
                 $"&review_type={type}" +
