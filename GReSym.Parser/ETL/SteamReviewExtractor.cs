@@ -6,43 +6,61 @@ using GReSym.Core.Enums;
 using GReSym.Core.Interfaces;
 using GReSym.Parser.Interfaces;
 using Microsoft.Extensions.Logging;
+using System.Text.Json.Serialization;
 
 namespace GReSym.Parser.ETL;
 
+public class SteamApiEnvelope<T>
+{
+    [JsonPropertyName("response")]
+    public T Response { get; set; } = default!;
+}
+
 public class SteamReviewResponse
 {
-    public int Success { get; set; }
-    public QuerySummary Query_Summary { get; set; } = default!;
-    public List<SteamReviewDto> Reviews { get; set; } = [];
-    public string Cursor { get; set; } = "*";
+    [JsonPropertyName("query_summary")] public QuerySummary Query_Summary { get; set; } = default!;
+    [JsonPropertyName("reviews")]       public List<SteamReviewDto> Reviews { get; set; } = [];
+    [JsonPropertyName("cursor")]        public string Cursor { get; set; } = "*";
+    [JsonPropertyName("total_matching")] public int? Total_Matching { get; set; }      // NEW
+    [JsonPropertyName("day_range_used")] public int? Day_Range_Used { get; set; }      // NEW
 }
 
 public class QuerySummary
 {
-    public int Num_Reviews { get; set; }
-    // Only returned for the first page (cursor=*)
-    public int? Total_Positive { get; set; }
-    public int? Total_Negative { get; set; }
+    [JsonPropertyName("num_reviews")]      public int Num_Reviews { get; set; }
+    [JsonPropertyName("total_positive")]   public int? Total_Positive { get; set; }
+    [JsonPropertyName("total_negative")]   public int? Total_Negative { get; set; }
+    [JsonPropertyName("total_reviews")]    public int? Total_Reviews { get; set; }   // new field
 }
 
 public class SteamReviewDto
 {
-    public string Recommendationid { get; set; } = "";
-    public SteamAuthor Author { get; set; } = default!;
-    public string Review { get; set; } = "";
-    public bool Voted_Up { get; set; }
-    public long Timestamp_Created { get; set; }
-    public long Timestamp_Updated { get; set; }
-    public int Votes_Up { get; set; }
-    public int Votes_Funny { get; set; }
-    public double Weighted_Vote_Score { get; set; }  // sent as a JSON string, Web defaults read it
-    public bool Written_During_Early_Access { get; set; }
+    [JsonPropertyName("recommendationid")]         public string Recommendationid { get; set; } = "";
+    [JsonPropertyName("author")]                   public SteamAuthor Author { get; set; } = default!;
+    [JsonPropertyName("language")]                 public string Language { get; set; } = "";        // NEW
+    [JsonPropertyName("review")]                   public string Review { get; set; } = "";
+    [JsonPropertyName("voted_up")]                 public bool Voted_Up { get; set; }
+    [JsonPropertyName("timestamp_created")]        public long Timestamp_Created { get; set; }
+    [JsonPropertyName("timestamp_updated")]        public long Timestamp_Updated { get; set; }
+    [JsonPropertyName("votes_up")]                 public int Votes_Up { get; set; }
+    [JsonPropertyName("votes_funny")]              public int Votes_Funny { get; set; }
+    [JsonPropertyName("weighted_vote_score")]      public double Weighted_Vote_Score { get; set; }
+    [JsonPropertyName("comment_count")]            public int Comment_Count { get; set; }             // NEW
+    [JsonPropertyName("written_during_early_access")] public bool Written_During_Early_Access { get; set; }
+    [JsonPropertyName("primarily_steam_deck")]     public bool Primarily_Steam_Deck { get; set; }      // NEW
+    [JsonPropertyName("steam_purchase")]           public bool Steam_Purchase { get; set; }            // NEW
+    [JsonPropertyName("refunded")]                 public bool Refunded { get; set; }                  // NEW
 }
 
 public class SteamAuthor
 {
-    public string Personaname { get; set; } = "";
-    public int? Playtime_At_Review { get; set; }  // minutes
+    [JsonPropertyName("steamid")]              public string Steamid { get; set; } = "";
+    [JsonPropertyName("num_reviews")]          public int? Num_Reviews { get; set; }           // NEW
+    [JsonPropertyName("playtime_forever")]     public int? Playtime_Forever { get; set; }      // NEW
+    [JsonPropertyName("playtime_at_review")]   public int? Playtime_At_Review { get; set; }
+    [JsonPropertyName("playtime_last_two_weeks")] public int? Playtime_Last_Two_Weeks { get; set; } // NEW
+    [JsonPropertyName("deck_playtime_at_review")] public int? Deck_Playtime_At_Review { get; set; } // NEW
+    [JsonPropertyName("last_played")]          public long? Last_Played { get; set; }          // NEW
 }
 
 public class SteamReviewExtractor : IDataExtractor<Review>
@@ -51,7 +69,7 @@ public class SteamReviewExtractor : IDataExtractor<Review>
     private readonly IUnitOfWork _uow;
 
     private const string BaseUrl =
-        "https://store.steampowered.com/appreviews";
+        "https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/";
 
     private const string Lang = "russian";
     private const int ReviewsPerType = 5;
@@ -158,16 +176,14 @@ public class SteamReviewExtractor : IDataExtractor<Review>
         try
         {
             var url =
-                $"{BaseUrl}/{steamSource.SteamAppId}" +
-                $"?json=1" +
-                $"&language=all" +
+                $"{BaseUrl}?appid={steamSource.SteamAppId}" +
                 $"&purchase_type=all" +
                 $"&num_per_page=1";
 
-            var response =
-                await client.GetFromJsonAsync<SteamReviewResponse>(url, token);
+            var envelope = await client.GetFromJsonAsync<SteamApiEnvelope<SteamReviewResponse>>(url, token);
+            var response = envelope?.Response;
 
-            if (response?.Success != 1 || response.Query_Summary?.Total_Positive == null)
+            if (response?.Query_Summary?.Total_Positive == null)
                 return;
 
             // The game was loaded tracked by this batch's UnitOfWork, so this is a plain UPDATE of steam_source
@@ -200,25 +216,18 @@ public class SteamReviewExtractor : IDataExtractor<Review>
         while (result.Count < ReviewsPerType)
         {
             var url =
-                $"{BaseUrl}/{appId}" +
-                $"?json=1" +
-                $"&language={Lang}" +
+                $"{BaseUrl}?appid={appId}" +
+                $"&languages[0]={Lang}" +
                 $"&num_per_page={PageSize}" + // больше страницы
                 $"&purchase_type=all" +
                 $"&review_type={type}" +
                 $"&cursor={Uri.EscapeDataString(cursor)}";
 
-            var response =
-                await client.GetFromJsonAsync<SteamReviewResponse>(
-                    url,
-                    token);
+            var envelope = await client.GetFromJsonAsync<SteamApiEnvelope<SteamReviewResponse>>(url, token);
+            var response = envelope?.Response;
 
-            if (response == null ||
-                response.Success != 1 ||
-                response.Reviews.Count == 0)
-            {
+            if (response == null || response.Reviews.Count == 0)
                 break;
-            }
 
             foreach (var steamReview in response.Reviews)
             {
@@ -251,7 +260,7 @@ public class SteamReviewExtractor : IDataExtractor<Review>
             ExternalId = dto.Recommendationid,
             GameId = gameId,
             Source = ReviewSource.Steam,
-            Author = dto.Author?.Personaname,
+            Author = dto.Author?.Steamid,
             Content = dto.Review,
             Recommended = dto.Voted_Up,
             Rating = dto.Voted_Up ? 1f : 0f,
@@ -281,12 +290,12 @@ public class SteamReviewExtractor : IDataExtractor<Review>
         try
         {
             var url =
-                $"{BaseUrl}/730?json=1&num_per_page=1";
+                $"{BaseUrl}?appid=730&num_per_page=1";
 
-            var response =
-                await client.GetAsync(url, token);
+            var envelope = await client.GetFromJsonAsync<SteamApiEnvelope<SteamReviewResponse>>(url, token);
+            var response = envelope?.Response;
 
-            return response.IsSuccessStatusCode;
+            return response != null;
         }
         catch
         {
